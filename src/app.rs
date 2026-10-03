@@ -119,6 +119,9 @@ pub struct App {
     pub last_side: usize,
     pub message: Option<(String, bool)>,
     pub quit_prompt: bool,
+    /// Find prompt text while the prompt is open.
+    pub search: Option<String>,
+    last_search: String,
     pub quit: bool,
     pub hl: Highlighter,
     pub areas: Areas,
@@ -174,6 +177,8 @@ impl App {
             last_side: 1,
             message: None,
             quit_prompt: false,
+            search: None,
+            last_search: String::new(),
             quit: false,
             hl: Highlighter::new(&opts.theme),
             areas: Areas::default(),
@@ -339,7 +344,10 @@ impl App {
                 self.on_key(k);
             }
             Event::Mouse(m) => self.on_mouse(m),
-            Event::Paste(s) => self.paste(&s),
+            Event::Paste(s) => match &mut self.search {
+                Some(q) => q.push_str(s.lines().next().unwrap_or("")),
+                None => self.paste(&s),
+            },
             _ => {}
         }
     }
@@ -359,8 +367,14 @@ impl App {
             return;
         }
 
+        if self.search.is_some() {
+            return self.search_key(k);
+        }
+
         let lower = |c: char| c.to_ascii_lowercase();
         match k.code {
+            KeyCode::Char(c) if ctrl && lower(c) == 'f' => return self.open_search(),
+            KeyCode::Char(c) if ctrl && lower(c) == 'g' => return self.search_next(),
             KeyCode::Char(c) if ctrl && lower(c) == 'q' => return self.request_quit(),
             KeyCode::Char(c) if ctrl && lower(c) == 's' => return self.save_current(),
             KeyCode::F(2) => {
@@ -394,6 +408,60 @@ impl App {
         match self.focus {
             Focus::Tree => self.tree_key(k),
             Focus::Pane(side) => self.pane_key(side, k),
+        }
+    }
+
+    fn open_search(&mut self) {
+        let side = self.active_side();
+        let sel = self
+            .current_view()
+            .and_then(|fv| fv.bufs[side].selected_text())
+            .filter(|t| !t.contains('\n'));
+        self.search = Some(sel.unwrap_or_else(|| self.last_search.clone()));
+    }
+
+    fn search_key(&mut self, k: KeyEvent) {
+        let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+        let Some(q) = &mut self.search else { return };
+        match k.code {
+            KeyCode::Esc => self.search = None,
+            KeyCode::Enter => self.finish_search(),
+            KeyCode::Char(c) if ctrl && matches!(c.to_ascii_lowercase(), 'f' | 'g') => self.finish_search(),
+            KeyCode::Backspace => {
+                q.pop();
+            }
+            KeyCode::Char(c) if !ctrl && !k.modifiers.contains(KeyModifiers::ALT) => q.push(c),
+            _ => {}
+        }
+    }
+
+    fn finish_search(&mut self) {
+        if let Some(q) = self.search.take()
+            && !q.is_empty()
+        {
+            self.last_search = q;
+            self.search_next();
+        }
+    }
+
+    fn search_next(&mut self) {
+        if self.last_search.is_empty() {
+            return self.open_search();
+        }
+        let side = self.active_side();
+        let query = self.last_search.clone();
+        let Some(fv) = self.current_view_mut() else { return };
+        let b = &mut fv.bufs[side];
+        let from = b.selection().map_or(b.cursor, |(_, e)| e);
+        let Some((s, e, wrapped)) = b.find(&query, from) else {
+            return self.set_message(format!("Not found: {query}"), true);
+        };
+        b.set_cursor(s, false);
+        b.set_cursor(e, true);
+        self.set_focus(Focus::Pane(side));
+        self.ensure_cursor_visible(side);
+        if wrapped {
+            self.set_message("Search wrapped", false);
         }
     }
 
@@ -852,6 +920,7 @@ impl App {
                     return;
                 }
                 self.message = None;
+                self.search = None;
                 if self.areas.splitter == Some(x) && self.areas.tree.y <= y && y < self.areas.tree.bottom() {
                     self.drag = Some(Drag::Splitter);
                 } else if self.areas.tree.contains(p) {

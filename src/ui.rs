@@ -76,7 +76,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if let Some(cursor) = draw_diff(f.buffer_mut(), app, diff_area) {
         f.set_cursor_position(cursor);
     }
-    draw_status(f.buffer_mut(), app, status);
+    if let Some(cursor) = draw_status(f.buffer_mut(), app, status) {
+        f.set_cursor_position(cursor);
+    }
 }
 
 fn status_color(s: Status) -> Color {
@@ -460,7 +462,7 @@ fn draw_center(buf: &mut TBuf, area: Rect, fv: &FileView) {
     }
 }
 
-fn draw_status(buf: &mut TBuf, app: &mut App, area: Rect) {
+fn draw_status(buf: &mut TBuf, app: &mut App, area: Rect) -> Option<(u16, u16)> {
     let bg = Style::new().bg(BG_STATUS);
     fill(buf, area, bg);
     let y = area.y;
@@ -484,7 +486,21 @@ fn draw_status(buf: &mut TBuf, app: &mut App, area: Rect) {
             x = add_button(buf, x, label, b);
         }
         app.areas.buttons = buttons;
-        return;
+        return None;
+    }
+    if let Some(q) = &app.search {
+        let x = put(
+            buf,
+            area.x,
+            y,
+            " Find: ",
+            bg.fg(ACCENT).add_modifier(Modifier::BOLD),
+            right,
+        );
+        let end = put(buf, x, y, q, bg.fg(Color::White), right);
+        put(buf, end, y, "   Enter search · Esc cancel", bg.fg(DIM), right);
+        app.areas.buttons = Vec::new();
+        return Some((end.min(right.saturating_sub(1)), y));
     }
 
     let mut items: Vec<(&str, Button)> = vec![("◀ Chg", Button::PrevHunk), ("Chg ▶", Button::NextHunk)];
@@ -520,7 +536,7 @@ fn draw_status(buf: &mut TBuf, app: &mut App, area: Rect) {
         None => (
             match app.focus {
                 Focus::Tree => "↑↓ select · Enter open · Space fold · Tab diff · Ctrl+N/P file · F5 rescan · q quit",
-                Focus::Pane(_) => "Ctrl+E/D change · Alt+←→ copy change · Ctrl+S save · F2 save all · Ctrl+Z/Y undo/redo · F6 focus · Esc tree · F12 mouse",
+                Focus::Pane(_) => "Ctrl+F/G find · Ctrl+E/D change · Alt+←→ copy change · Ctrl+S save · F2 save all · Ctrl+Z/Y undo/redo · F6 focus · Esc tree · F12 mouse",
             }
             .to_string(),
             bg.fg(DIM),
@@ -534,6 +550,7 @@ fn draw_status(buf: &mut TBuf, app: &mut App, area: Rect) {
         style,
         start.saturating_sub(1).max(area.x + 1),
     );
+    None
 }
 
 #[cfg(test)]
@@ -596,6 +613,29 @@ mod tests {
             readonly: false,
             theme: "base16-eighties.dark".into(),
         }
+    }
+
+    #[test]
+    fn find_prompt_and_next() {
+        let l = tempfile::tempdir().unwrap();
+        let r = tempfile::tempdir().unwrap();
+        write(&l.path().join("a.txt"), "one\nfoo\nbar foo\n");
+        write(&r.path().join("a.txt"), "one\nFOO\nbar foo\n");
+        let mut app = App::new(l.path().join("a.txt"), r.path().join("a.txt"), opts()).unwrap();
+        let mut term = Terminal::new(TestBackend::new(110, 12)).unwrap();
+        render(&mut term, &mut app);
+        key(&mut app, KeyCode::Char('f'), KeyModifiers::CONTROL);
+        for c in "foo".chars() {
+            key(&mut app, KeyCode::Char(c), KeyModifiers::NONE);
+        }
+        assert!(render(&mut term, &mut app).contains("Find: foo"));
+        key(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+        let sel = |app: &App| app.current_view().unwrap().bufs[1].selected_text();
+        assert_eq!(sel(&app).as_deref(), Some("FOO"));
+        key(&mut app, KeyCode::Char('g'), KeyModifiers::CONTROL);
+        assert_eq!(app.current_view().unwrap().bufs[1].cursor.line, 2);
+        key(&mut app, KeyCode::Char('g'), KeyModifiers::CONTROL);
+        assert_eq!(app.current_view().unwrap().bufs[1].cursor.line, 1);
     }
 
     #[test]

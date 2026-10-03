@@ -79,6 +79,18 @@ fn is_word(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
+/// Lowercases char by char so indices stay aligned with the original text.
+fn fold(s: &str) -> Vec<char> {
+    s.chars().map(|c| c.to_lowercase().next().unwrap_or(c)).collect()
+}
+
+fn find_in_line(chars: &[char], q: &[char], start: usize) -> Option<usize> {
+    if q.len() > chars.len() {
+        return None;
+    }
+    (start..=chars.len() - q.len()).find(|&i| chars[i..i + q.len()] == *q)
+}
+
 impl Buffer {
     fn with_lines(path: PathBuf, lines: Vec<String>, trailing_newline: bool) -> Self {
         let mut b = Self {
@@ -393,7 +405,14 @@ impl Buffer {
     /// Deletes the cursor line, or every line touched by the selection.
     pub fn delete_line(&mut self) {
         let (first, last) = match self.selection() {
-            Some((s, e)) => (s.line, if e.col == 0 && e.line > s.line { e.line - 1 } else { e.line }),
+            Some((s, e)) => (
+                s.line,
+                if e.col == 0 && e.line > s.line {
+                    e.line - 1
+                } else {
+                    e.line
+                },
+            ),
             None => (self.cursor.line, self.cursor.line),
         };
         let col = self.cursor.col;
@@ -599,6 +618,31 @@ impl Buffer {
         self.cursor.col = e;
     }
 
+    /// Case-insensitive literal search starting at `from`, wrapping at the end.
+    /// Returns the match start, its end and whether the search wrapped.
+    pub fn find(&self, query: &str, from: Pos) -> Option<(Pos, Pos, bool)> {
+        let q = fold(query);
+        if q.is_empty() {
+            return None;
+        }
+        let n = self.lines.len();
+        let from_line = from.line.min(n - 1);
+        for i in 0..=n {
+            let line = (from_line + i) % n;
+            let chars = fold(&self.lines[line]);
+            let (start, end) = match i {
+                0 => (from.col, usize::MAX),
+                _ if i == n => (0, from.col),
+                _ => (0, usize::MAX),
+            };
+            if let Some(c) = find_in_line(&chars, &q, start).filter(|c| *c < end) {
+                let wrapped = line < from_line || i == n;
+                return Some((Pos::new(line, c), Pos::new(line, c + q.len()), wrapped));
+            }
+        }
+        None
+    }
+
     pub fn select_all(&mut self) {
         self.anchor = Some(Pos::new(0, 0));
         let l = self.lines.len() - 1;
@@ -696,6 +740,21 @@ mod tests {
         let mut b = buf("only\n");
         b.delete_line();
         assert_eq!(b.to_text(), "");
+    }
+
+    #[test]
+    fn find_text() {
+        let b = buf("Hello world\nfoo Hello\nÄb äB\n");
+        let (s, e, w) = b.find("hello", Pos::new(0, 0)).unwrap();
+        assert_eq!((s, e, w), (Pos::new(0, 0), Pos::new(0, 5), false));
+        let (s, _, w) = b.find("hello", Pos::new(0, 5)).unwrap();
+        assert_eq!((s, w), (Pos::new(1, 4), false));
+        let (s, _, w) = b.find("hello", Pos::new(1, 9)).unwrap();
+        assert_eq!((s, w), (Pos::new(0, 0), true));
+        let (s, e, _) = b.find("äb", Pos::new(2, 1)).unwrap();
+        assert_eq!((s, e), (Pos::new(2, 3), Pos::new(2, 5)));
+        assert!(b.find("zzz", Pos::new(0, 0)).is_none());
+        assert!(b.find("", Pos::new(0, 0)).is_none());
     }
 
     #[test]
