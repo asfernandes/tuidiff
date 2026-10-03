@@ -1,6 +1,7 @@
 mod app;
 mod buffer;
 mod diff;
+mod gitdiff;
 mod highlight;
 mod scan;
 mod text;
@@ -29,11 +30,11 @@ use app::{App, Options};
 #[derive(Parser)]
 #[command(version, verbatim_doc_comment)]
 struct Cli {
-    /// Left (old) folder or file
+    /// Left (old) folder or file; or, when given alone, a folder inside a git
+    /// repository to compare against HEAD (like `git difftool -d HEAD`)
     #[arg(required_unless_present = "list_themes")]
     left: Option<PathBuf>,
     /// Right (new) folder or file
-    #[arg(required_unless_present = "list_themes")]
     right: Option<PathBuf>,
     /// git difftool mode: left is read-only, right is editable only for
     /// working-tree files (auto-detected for `git difftool -d` temp dirs)
@@ -61,13 +62,22 @@ fn main() -> Result<()> {
         }
         return Ok(());
     }
+    let left = cli.left.unwrap();
+    // Keep the guard alive until exit so the temp dirs are removed.
+    let (left, right, git_head, _guard) = match cli.right {
+        Some(right) => (left, right, false, None),
+        None => {
+            let d = gitdiff::prepare(&left)?;
+            (d.left.clone(), d.right.clone(), true, Some(d))
+        }
+    };
     let opts = Options {
-        git: cli.git,
+        git: cli.git || git_head,
         right_editable: cli.right_editable,
         readonly: cli.readonly,
         theme: cli.theme,
     };
-    let mut app = App::new(cli.left.unwrap(), cli.right.unwrap(), opts)?;
+    let mut app = App::new(left, right, opts)?;
 
     let mut terminal = ratatui::init();
     execute!(stdout(), EnableMouseCapture, EnableBracketedPaste)?;

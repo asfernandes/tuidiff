@@ -13,6 +13,7 @@ A terminal side-by-side diff viewer and editor for folders and files, usable as 
 
 ```
 difftui <LEFT> <RIGHT>          # two folders or two files
+difftui .                       # inside a git repo: HEAD vs. working tree (like `git difftool -d HEAD`)
 difftui --git <LOCAL> <REMOTE>  # git mode
 difftui --list-themes
 difftui --theme "Solarized (dark)" a b
