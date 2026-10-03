@@ -123,6 +123,7 @@ pub struct App {
     pub hl: Highlighter,
     pub areas: Areas,
     clipboard: String,
+    sys_clipboard: Option<arboard::Clipboard>,
     /// OSC 52 clipboard sequences to write to the terminal.
     pub osc_out: Vec<String>,
     /// Set by draw when syntax highlighting ran out of time budget.
@@ -177,6 +178,7 @@ impl App {
             hl: Highlighter::new(&opts.theme),
             areas: Areas::default(),
             clipboard: String::new(),
+            sys_clipboard: None,
             osc_out: Vec::new(),
             hl_pending: false,
             mouse_enabled: true,
@@ -540,7 +542,7 @@ impl App {
                 self.set_clipboard(t);
             }
             KeyCode::Char(c) if ctrl && c.eq_ignore_ascii_case(&'v') => {
-                let t = self.clipboard.clone();
+                let t = self.clipboard_text();
                 return self.paste(&t);
             }
             KeyCode::Tab => {
@@ -598,7 +600,24 @@ impl App {
     fn set_clipboard(&mut self, text: String) {
         self.osc_out
             .push(format!("\x1b]52;c;{}\x07", crate::text::base64(text.as_bytes())));
+        // Kept alive: on X11/Wayland the contents vanish when the owner is dropped.
+        if self.sys_clipboard.is_none() {
+            self.sys_clipboard = arboard::Clipboard::new().ok();
+        }
+        if let Some(c) = &mut self.sys_clipboard {
+            let _ = c.set_text(text.clone());
+        }
         self.clipboard = text;
+    }
+
+    fn clipboard_text(&mut self) -> String {
+        if self.sys_clipboard.is_none() {
+            self.sys_clipboard = arboard::Clipboard::new().ok();
+        }
+        match self.sys_clipboard.as_mut().and_then(|c| c.get_text().ok()) {
+            Some(t) if !t.is_empty() => t,
+            _ => self.clipboard.clone(),
+        }
     }
 
     fn paste(&mut self, text: &str) {
