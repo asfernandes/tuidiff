@@ -560,6 +560,11 @@ impl App {
                     .collect();
                 ro = !edit(b, &|b| b.insert_text(&format!("\n{indent}"), EditKind::Other));
             }
+            KeyCode::Backspace if ctrl => ro = !edit(b, &|b| b.delete_word(false)),
+            // Many terminals send Ctrl+Backspace as ^H.
+            KeyCode::Char(c) if ctrl && c.eq_ignore_ascii_case(&'h') => ro = !edit(b, &|b| b.delete_word(false)),
+            KeyCode::Delete if ctrl => ro = !edit(b, &|b| b.delete_word(true)),
+            KeyCode::Char(c) if ctrl && c.eq_ignore_ascii_case(&'k') => ro = !edit(b, &|b| b.delete_line()),
             KeyCode::Backspace => ro = !edit(b, &|b| b.backspace()),
             KeyCode::Delete => ro = !edit(b, &|b| b.delete()),
             KeyCode::Char(c) if !ctrl && !alt => {

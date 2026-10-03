@@ -62,6 +62,7 @@ Which files can be edited:
 | pane | arrows, `Ctrl+←/→`, `Home/End`, `Ctrl+Home/End`, `PgUp/PgDn` | move (hold `Shift` to select) |
 | pane | `Ctrl+↑/↓` | scroll without moving the cursor |
 | pane | `Ctrl+A` / `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | select all / copy / cut / paste. With no selection, copy and cut take the whole line. Copy also goes to the system clipboard (natively, plus OSC 52 as a fallback). Some terminals intercept `Ctrl+Shift+C`; use `Ctrl+C` |
+| pane | `Ctrl+K` / `Ctrl+Backspace` / `Ctrl+Del` | delete line (or selected lines) / previous word / next word |
 | pane | `Esc` | back to the tree |
 
 Mouse: click a tree row to open a file or fold a folder. Click or drag in a pane to place the cursor or select, and double-click to select a word. The mouse wheel scrolls; hold `Shift` to scroll sideways. Click `«` / `»` to copy a change, drag the tree border to resize it, and use the status-bar buttons.

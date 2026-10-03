@@ -373,6 +373,41 @@ impl Buffer {
         self.after_edit(line);
     }
 
+    /// Deletes the selection, or the word before/after the cursor.
+    pub fn delete_word(&mut self, forward: bool) {
+        if self.selection().is_some() {
+            self.backspace();
+            return;
+        }
+        let target = self.word_target(forward);
+        if target == self.cursor {
+            return;
+        }
+        self.begin_edit(EditKind::Delete);
+        self.anchor = Some(target);
+        let l = self.selection().map_or(0, |(s, _)| s.line);
+        self.delete_selection_raw();
+        self.after_edit(l);
+    }
+
+    /// Deletes the cursor line, or every line touched by the selection.
+    pub fn delete_line(&mut self) {
+        let (first, last) = match self.selection() {
+            Some((s, e)) => (s.line, if e.col == 0 && e.line > s.line { e.line - 1 } else { e.line }),
+            None => (self.cursor.line, self.cursor.line),
+        };
+        let col = self.cursor.col;
+        self.begin_edit(EditKind::Other);
+        self.lines.drain(first..=last);
+        if self.lines.is_empty() {
+            self.trailing_newline = false;
+        }
+        self.cursor = Pos::new(first, col);
+        self.anchor = None;
+        self.after_edit(first);
+        self.break_undo_group();
+    }
+
     /// Replaces whole lines `range` with `new` (used for hunk copying).
     pub fn replace_lines(&mut self, range: std::ops::Range<usize>, new: &[String], src_trailing_newline: bool) {
         self.begin_edit(EditKind::Other);
@@ -502,8 +537,7 @@ impl Buffer {
         self.set_cursor(Pos::new(l, char_len(&self.lines[l])), select);
     }
 
-    pub fn move_word(&mut self, forward: bool, select: bool) {
-        self.begin_move(select);
+    fn word_target(&self, forward: bool) -> Pos {
         let Pos { mut line, mut col } = self.cursor;
         if forward {
             let chars: Vec<char> = self.lines[line].chars().collect();
@@ -534,7 +568,12 @@ impl Buffer {
                 col -= 1;
             }
         }
-        self.cursor = Pos::new(line, col);
+        Pos::new(line, col)
+    }
+
+    pub fn move_word(&mut self, forward: bool, select: bool) {
+        self.begin_move(select);
+        self.cursor = self.word_target(forward);
         self.want_col = None;
     }
 
@@ -631,6 +670,32 @@ mod tests {
         b.set_cursor(Pos::new(0, 3), false);
         b.delete();
         assert_eq!(b.lines, ["aXd"]);
+    }
+
+    #[test]
+    fn delete_words_and_lines() {
+        let mut b = buf("foo bar baz\nqux\n");
+        b.set_cursor(Pos::new(0, 7), false);
+        b.delete_word(false);
+        assert_eq!(b.lines[0], "foo  baz");
+        b.delete_word(true);
+        assert_eq!(b.lines[0], "foo ");
+        b.delete_word(true);
+        assert_eq!(b.lines, ["foo qux"]);
+        b.set_cursor(Pos::new(0, 0), false);
+        b.delete_word(false);
+        assert_eq!(b.lines, ["foo qux"]);
+        b.undo();
+        let mut b = buf("a\nb\nc\n");
+        b.set_cursor(Pos::new(1, 1), false);
+        b.delete_line();
+        assert_eq!(b.lines, ["a", "c"]);
+        assert_eq!(b.cursor, Pos::new(1, 1));
+        b.undo();
+        assert_eq!(b.lines, ["a", "b", "c"]);
+        let mut b = buf("only\n");
+        b.delete_line();
+        assert_eq!(b.to_text(), "");
     }
 
     #[test]
