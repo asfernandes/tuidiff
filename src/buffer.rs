@@ -779,7 +779,10 @@ mod tests {
         let target = dir.path().join("real.txt");
         let link = dir.path().join("link.txt");
         fs::write(&target, "old\n").unwrap();
+        #[cfg(unix)]
         std::os::unix::fs::symlink(&target, &link).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(&target, &link).unwrap();
         let mut b = Buffer::load(&link, true).unwrap();
         b.set_cursor(Pos::new(0, 3), false);
         b.insert_text("er", EditKind::Insert);

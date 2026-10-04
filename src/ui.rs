@@ -781,6 +781,7 @@ mod tests {
             git: false,
             right_editable: false,
             readonly: false,
+            range_mode: false,
             theme: "base16-eighties.dark".into(),
         }
     }

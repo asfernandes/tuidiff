@@ -49,11 +49,11 @@ Which files can be edited:
 | Situation | Left | Right |
 |---|---|---|
 | Plain folder/file diff | editable | editable |
-| git, right side is the working tree | read-only | **editable**: saved straight into your working tree through git's symlinks |
-| git, right side is a commit | read-only | read-only, because git would throw your edits away |
+| git, right side is the working tree | read-only | **editable**: with symlinks saved straight into your working tree; with `--no-symlinks` (the default on Windows) saved to git's temp copy, which git copies back when the tool exits |
+| git, right side is a commit (`git difftool -d main feature`) | read-only | editable, but git discards the edits when the tool exits |
 | `tuidiff REV1..REV2` | read-only | read-only (both sides are commits) |
 
-`--git` is auto-detected when the paths are inside a `git-difftool.*` temp dir. If you use `git difftool -d --no-symlinks`, pass `--right-editable`. Git copies modified working-tree files back when the tool exits.
+`--git` is auto-detected when the paths are inside a `git-difftool.*` temp dir. `--right-editable` forces the right side editable (e.g. for `tuidiff REV1..REV2`).
 
 ## Keys
 
