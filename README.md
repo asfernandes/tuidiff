@@ -4,6 +4,8 @@ A side-by-side terminal diff and merge editor.
 
 A terminal side-by-side diff viewer and editor for folders and files, usable as a `git difftool -d` backend.
 
+![tuidiff screenshot](screenshots/main.png)
+
 - A folder tree on the left shows only files that differ, drawn with Unicode tree guides (`├─ └─ │`) and folder icons.
   - `●` means modified, `✚` only on the right, `✖` only on the left, and `✔` identical after your edits. `✎` marks unsaved changes.
 - Two diff panes show the old and new versions with aligned lines, syntax highlighting (syntect), and highlighted changed words within a line.
