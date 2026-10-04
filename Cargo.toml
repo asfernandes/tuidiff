@@ -13,3 +13,10 @@ unicode-width = "0.2.2"
 walkdir = "2.5.0"
 tempfile = "3.27.0"
 arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+unused_qualifications = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
