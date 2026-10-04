@@ -8,17 +8,24 @@ mod text;
 mod tree;
 mod ui;
 
-use std::io::{Write, stdout};
+use std::io::{BufWriter, Stdout, Write, stdout};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::Result;
 use clap::Parser;
-use ratatui::DefaultTerminal;
+use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::event::{
     self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
 };
-use ratatui::crossterm::execute;
+use ratatui::crossterm::terminal::{
+    BeginSynchronizedUpdate, EndSynchronizedUpdate, EnterAlternateScreen, enable_raw_mode,
+};
+use ratatui::crossterm::{execute, queue};
+
+/// Large buffer so a full-screen redraw goes out in a few writes instead of one per KiB.
+type Term = Terminal<CrosstermBackend<BufWriter<Stdout>>>;
 
 use app::{App, Options};
 
@@ -86,22 +93,26 @@ fn main() -> Result<()> {
     };
     let mut app = App::new(left, right, opts)?;
 
-    let mut terminal = ratatui::init();
-    execute!(stdout(), EnableMouseCapture, EnableBracketedPaste)?;
     let prev_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let _ = execute!(stdout(), DisableMouseCapture, DisableBracketedPaste);
+        ratatui::restore();
         prev_hook(info);
     }));
+    enable_raw_mode()?;
+    execute!(stdout(), EnterAlternateScreen, EnableMouseCapture, EnableBracketedPaste)?;
+    let mut terminal = Terminal::new(CrosstermBackend::new(BufWriter::with_capacity(1 << 20, stdout())))?;
     let res = run(&mut terminal, &mut app);
     let _ = execute!(stdout(), DisableMouseCapture, DisableBracketedPaste);
     ratatui::restore();
     res
 }
 
-fn run(terminal: &mut DefaultTerminal, app: &mut App) -> Result<()> {
+fn run(terminal: &mut Term, app: &mut App) -> Result<()> {
     while !app.quit {
+        queue!(terminal.backend_mut(), BeginSynchronizedUpdate)?;
         terminal.draw(|f| ui::draw(f, app))?;
+        execute!(terminal.backend_mut(), EndSynchronizedUpdate)?;
         if !app.osc_out.is_empty() {
             let mut out = stdout();
             for s in app.osc_out.drain(..) {

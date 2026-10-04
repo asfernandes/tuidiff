@@ -24,6 +24,8 @@ pub enum Focus {
     Pane(usize),
 }
 
+pub type InlineDiff = (Vec<std::ops::Range<usize>>, Vec<std::ops::Range<usize>>);
+
 pub struct FileView {
     pub bufs: [Buffer; 2],
     pub hl: [HlCache; 2],
@@ -32,6 +34,8 @@ pub struct FileView {
     /// First display row shown (shared by both panes).
     pub scroll: usize,
     pub hscroll: [usize; 2],
+    /// Word-level changes per (left line, right line) of replaced rows; cleared when the diff is recomputed.
+    pub inline: HashMap<(usize, usize), InlineDiff>,
 }
 
 impl FileView {
@@ -41,6 +45,7 @@ impl FileView {
         if self.diff_versions != Some(v) {
             self.diff = diff::compute(self.bufs[0].diff_lines(), self.bufs[1].diff_lines());
             self.diff_versions = Some(v);
+            self.inline.clear();
         }
         for s in 0..2 {
             if let Some(from) = self.bufs[s].hl_invalid_from.take() {
@@ -282,6 +287,7 @@ impl App {
                 diff_versions: None,
                 scroll: 0,
                 hscroll: [0, 0],
+                inline: HashMap::new(),
             };
             fv.refresh();
             if let Some(h) = fv.diff.hunks.first().cloned() {

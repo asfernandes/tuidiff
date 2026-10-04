@@ -293,6 +293,15 @@ fn draw_pane(
     if let Some(max_line) = rows[scroll.min(end)..end].iter().filter_map(|r| r.side(side)).max() {
         done = fv.hl[side].ensure(hl, &fv.bufs[side].lines, max_line + 1, deadline);
     }
+    for row in &rows[scroll.min(end)..end] {
+        if row.kind == Kind::Replace
+            && let (Some(ll), Some(rl)) = (row.left, row.right)
+        {
+            fv.inline
+                .entry((ll, rl))
+                .or_insert_with(|| inline_changes(&fv.bufs[0].lines[ll], &fv.bufs[1].lines[rl]));
+        }
+    }
     let b = &fv.bufs[side];
     let sel = b.selection();
     let hscroll = fv.hscroll[side];
@@ -327,11 +336,11 @@ fn draw_pane(
         put(buf, area.x, y, &num, gstyle, area.x + gutter);
 
         let line = &b.lines[l];
-        let mut emph = Vec::new();
+        let mut emph: &[Range<usize>] = &[];
         if row.kind == Kind::Replace
             && let (Some(ll), Some(rl)) = (row.left, row.right)
+            && let Some((a, bb)) = fv.inline.get(&(ll, rl))
         {
-            let (a, bb) = inline_changes(&fv.bufs[0].lines[ll], &fv.bufs[1].lines[rl]);
             emph = if side == 0 { a } else { bb };
         }
         let emph_bg = if side == 0 { BG_DEL_EMPH } else { BG_INS_EMPH };
@@ -342,7 +351,7 @@ fn draw_pane(
             ))
         });
         let spans = fv.hl[side].lines.get(l).map(Vec::as_slice).unwrap_or(&[]);
-        draw_text(buf, text_rect, line, spans, hscroll, base, &emph, emph_bg, line_sel);
+        draw_text(buf, text_rect, line, spans, hscroll, base, emph, emph_bg, line_sel);
     }
     if !focused {
         return (None, done);
