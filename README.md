@@ -76,3 +76,7 @@ Mouse: click a tree row to open a file or fold a folder. Click or drag in a pane
 cargo build --release   # needs a C compiler (bundled Oniguruma regex engine for highlighting)
 cargo test
 ```
+
+## License
+
+MIT. See [LICENSE](LICENSE).
