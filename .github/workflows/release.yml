@@ -59,11 +59,11 @@ jobs:
           if [ "$WINDOWS" = "true" ]; then
             cp "../target/$TARGET/release/tuidiff.exe" "$name/"
             7z a "$name.zip" "$name"
-            sha256sum "$name.zip" > "$name.zip.sha256"
+            sha256sum -b "$name.zip" | sed 's/ \*/  /' > "$name.zip.sha256"
           else
             cp "../target/$TARGET/release/tuidiff" "$name/"
             tar -czf "$name.tar.gz" "$name"
-            shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+            shasum -a 256 -b "$name.tar.gz" | sed 's/ \*/  /' > "$name.tar.gz.sha256"
           fi
           rm -rf "$name"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
