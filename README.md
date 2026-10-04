@@ -11,6 +11,15 @@ A terminal side-by-side diff viewer and editor for folders and files, usable as 
 - You can copy a change from one side to the other with Meld-style `«` / `»` arrows or `Alt+←/→`.
 - Full mouse support: clicks, drag-selection, double-click word selection, wheel scrolling, clickable change arrows and buttons, and a draggable tree splitter.
 
+## Donation
+
+If you like this project and want to support its development, you can donate via:
+
+- GitHub Sponsor: https://github.com/sponsors/asfernandes
+- Pix (Brazil): 278dd4e5-8226-494d-93a9-f3fb8a027a99
+- BTC: 1Q1W3tLD1xbk81kTeFqobiyrEXcKN1GfHG
+- [![paypal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=X3JMTGW92LQEL)
+
 ## Usage
 
 ```
