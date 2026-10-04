@@ -455,21 +455,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "difftui"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "arboard",
- "clap",
- "ratatui",
- "similar",
- "syntect",
- "tempfile",
- "unicode-width",
- "walkdir",
-]
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1993,6 +1978,21 @@ dependencies = [
  "memchr",
  "nom 8.0.0",
  "petgraph",
+]
+
+[[package]]
+name = "tuidiff"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arboard",
+ "clap",
+ "ratatui",
+ "similar",
+ "syntect",
+ "tempfile",
+ "unicode-width",
+ "walkdir",
 ]
 
 [[package]]

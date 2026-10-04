@@ -1,4 +1,6 @@
-# difftui
+# tuidiff
+
+A side-by-side terminal diff and merge editor.
 
 A terminal side-by-side diff viewer and editor for folders and files, usable as a `git difftool -d` backend.
 
@@ -12,19 +14,19 @@ A terminal side-by-side diff viewer and editor for folders and files, usable as 
 ## Usage
 
 ```
-difftui <LEFT> <RIGHT>          # two folders or two files
-difftui .                       # inside a git repo: HEAD vs. working tree (like `git difftool -d HEAD`)
-difftui --git <LOCAL> <REMOTE>  # git mode
-difftui --list-themes
-difftui --theme "Solarized (dark)" a b
+tuidiff <LEFT> <RIGHT>          # two folders or two files
+tuidiff .                       # inside a git repo: HEAD vs. working tree (like `git difftool -d HEAD`)
+tuidiff --git <LOCAL> <REMOTE>  # git mode
+tuidiff --list-themes
+tuidiff --theme "Solarized (dark)" a b
 ```
 
 ### As git difftool
 
 ```
-git config --global difftool.difftui.cmd 'difftui --git "$LOCAL" "$REMOTE"'
+git config --global difftool.tuidiff.cmd 'tuidiff --git "$LOCAL" "$REMOTE"'
 git config --global difftool.prompt false
-git config --global diff.tool difftui        # optional: make it the default
+git config --global diff.tool tuidiff        # optional: make it the default
 
 git difftool -d               # folder diff of the working tree vs. the index/HEAD
 git difftool -d HEAD~3        # working tree vs. a commit

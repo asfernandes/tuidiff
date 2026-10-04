@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## What this is
 
-`difftui` is a Rust (edition 2024) terminal side-by-side diff viewer/editor for two folders or two files, built on
+`tuidiff` is a Rust (edition 2024) terminal side-by-side diff viewer/editor for two folders or two files, built on
 ratatui/crossterm. It also serves as a `git difftool -d` backend. README.md documents the CLI, the editability rules and
 all key bindings; keep it in sync when adding or changing shortcuts or modes.
 
@@ -41,7 +41,7 @@ Single binary, flat module layout in `src/`:
   `app.rs` hit-tests against, so layout changes in `ui.rs` must keep `Areas` accurate.
 - `scan.rs` / `tree.rs`: recursive folder comparison (skips `.git`, lists only differing files) and the collapsible tree
   built from it.
-- `gitdiff.rs`: single-path mode (`difftui .`). It shells out to `git`, writes changed HEAD files into a temp dir (left)
+- `gitdiff.rs`: single-path mode (`tuidiff .`). It shells out to `git`, writes changed HEAD files into a temp dir (left)
   and symlinks to the working tree (right), so the rest of the app just sees two folders. The `TempDir` guard is held in
   `main` until exit.
 - `text.rs`: display-width helpers (tabs, wide chars, control-char stand-ins) shared by rendering and mouse hit-testing,

@@ -25,8 +25,8 @@ use app::{App, Options};
 /// Side-by-side folder/file diff viewer and editor for the terminal.
 ///
 /// Use as git difftool:
-///   git config --global difftool.difftui.cmd 'difftui --git "$LOCAL" "$REMOTE"'
-///   git difftool -d -t difftui
+///   git config --global difftool.tuidiff.cmd 'tuidiff --git "$LOCAL" "$REMOTE"'
+///   git difftool -d -t tuidiff
 #[derive(Parser)]
 #[command(version, verbatim_doc_comment)]
 struct Cli {
