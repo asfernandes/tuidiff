@@ -73,11 +73,172 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     } else {
         main
     };
-    if let Some(cursor) = draw_diff(f.buffer_mut(), app, diff_area) {
+    let cursor = draw_diff(f.buffer_mut(), app, diff_area);
+    let status_cursor = draw_status(f.buffer_mut(), app, status);
+    if app.help.is_some() {
+        app.areas.buttons.clear();
+        draw_help(f, app, main);
+    } else if let Some(cursor) = status_cursor.or(cursor) {
         f.set_cursor_position(cursor);
     }
-    if let Some(cursor) = draw_status(f.buffer_mut(), app, status) {
-        f.set_cursor_position(cursor);
+}
+
+type HelpSection = (&'static str, &'static [(&'static str, &'static str)]);
+
+const HELP: &[HelpSection] = &[
+    (
+        "Global",
+        &[
+            (
+                "Tab / Shift+Tab / F6",
+                "switch focus between tree, left and right (Tab indents in an editable pane)",
+            ),
+            ("Ctrl+D / Ctrl+E, Alt+↓ / Alt+↑", "next / previous change"),
+            (
+                "Alt+→ / Alt+←",
+                "copy the change under the cursor left→right / right→left",
+            ),
+            ("Ctrl+N / Ctrl+P", "next / previous file"),
+            ("Ctrl+S / F2", "save the current file pair / save all"),
+            ("Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z)", "undo / redo"),
+            ("Ctrl+F / Ctrl+G", "find / find next"),
+            ("F5", "rescan folders (folder mode)"),
+            ("F12", "toggle mouse capture (off = terminal text selection)"),
+            ("F1", "show / hide this help"),
+            ("Ctrl+Q", "quit; asks first if anything is unsaved"),
+        ],
+    ),
+    (
+        "File tree",
+        &[
+            ("↑ ↓ / k j, PgUp PgDn, Home End", "select (opens the file)"),
+            ("Enter", "focus the diff, or expand / collapse a folder"),
+            ("→ / l", "expand folder / next row"),
+            ("← / h", "collapse folder / go to parent"),
+            ("Space", "fold / unfold folder"),
+            ("Ctrl+← / Ctrl+→", "resize the tree"),
+            ("Tab", "focus the diff"),
+            ("q / Esc", "quit"),
+        ],
+    ),
+    (
+        "Editor (diff panes)",
+        &[
+            ("Arrows, Ctrl+←/→, Home/End", "move (hold Shift to select)"),
+            ("Ctrl+Home / Ctrl+End, PgUp / PgDn", "document start / end, page"),
+            ("Ctrl+↑ / Ctrl+↓", "scroll without moving the cursor"),
+            ("Ctrl+A", "select all"),
+            (
+                "Ctrl+C / Ctrl+X / Ctrl+V",
+                "copy / cut / paste (no selection = whole line)",
+            ),
+            ("Ctrl+K", "delete line"),
+            ("Ctrl+Backspace / Ctrl+Del", "delete previous / next word"),
+            ("Esc", "back to the tree (folder mode)"),
+        ],
+    ),
+    (
+        "Find prompt",
+        &[("Enter / Ctrl+F / Ctrl+G", "search"), ("Esc", "cancel")],
+    ),
+    (
+        "Quit prompt",
+        &[("S", "save all & quit"), ("D", "discard & quit"), ("C / Esc", "cancel")],
+    ),
+    (
+        "Mouse",
+        &[
+            (
+                "Click / drag / double-click",
+                "place cursor / select / select word; open or fold tree rows",
+            ),
+            ("Wheel (Shift = sideways)", "scroll"),
+            ("« / »", "copy a change to the other side"),
+            ("Drag the tree border", "resize the tree"),
+            ("Status-bar buttons", "navigate, save, quit"),
+        ],
+    ),
+];
+
+fn draw_help(f: &mut Frame, app: &mut App, area: Rect) {
+    let w = area.width.saturating_sub(4).min(100);
+    if w < 10 || area.height < 6 {
+        return;
+    }
+    let key_w = HELP
+        .iter()
+        .flat_map(|(_, rows)| rows.iter())
+        .map(|(k, _)| k.chars().count())
+        .max()
+        .unwrap_or(0)
+        .min(w as usize / 2);
+    let mut lines: Vec<(Option<&str>, &str, &str)> = Vec::new();
+    for (i, (title, rows)) in HELP.iter().enumerate() {
+        if i > 0 {
+            lines.push((None, "", ""));
+        }
+        lines.push((Some(title), "", ""));
+        lines.extend(rows.iter().map(|(k, a)| (None, *k, *a)));
+    }
+
+    let h = (lines.len() as u16 + 2).min(area.height.saturating_sub(2));
+    let popup = Rect::new(area.x + (area.width - w) / 2, area.y + (area.height - h) / 2, w, h);
+    let buf = f.buffer_mut();
+    let bg = Style::new().bg(BG_HEADER).fg(FG);
+    fill(buf, popup, bg);
+
+    let inner = Rect::new(popup.x + 2, popup.y + 1, w - 4, h - 2);
+    let max_off = lines.len().saturating_sub(inner.height as usize);
+    let off = app.help.unwrap_or(0).min(max_off);
+    app.help = Some(off);
+
+    let right = inner.right();
+    for (i, (title, k, a)) in lines.iter().skip(off).take(inner.height as usize).enumerate() {
+        let y = inner.y + i as u16;
+        if let Some(t) = title {
+            put(buf, inner.x, y, t, bg.fg(ACCENT).add_modifier(Modifier::BOLD), right);
+        } else {
+            let x = put(buf, inner.x + 1, y, &format!("{k:<key_w$}"), bg.fg(YELLOW), right);
+            put(buf, x + 2, y, a, bg, right);
+        }
+    }
+
+    // Border with title and scroll hints.
+    let edge = bg.fg(DIM);
+    for x in popup.left() + 1..popup.right() - 1 {
+        buf[(x, popup.top())].set_char('─').set_style(edge);
+        buf[(x, popup.bottom() - 1)].set_char('─').set_style(edge);
+    }
+    for y in popup.top() + 1..popup.bottom() - 1 {
+        buf[(popup.left(), y)].set_char('│').set_style(edge);
+        buf[(popup.right() - 1, y)].set_char('│').set_style(edge);
+    }
+    buf[(popup.left(), popup.top())].set_char('┌').set_style(edge);
+    buf[(popup.right() - 1, popup.top())].set_char('┐').set_style(edge);
+    buf[(popup.left(), popup.bottom() - 1)].set_char('└').set_style(edge);
+    buf[(popup.right() - 1, popup.bottom() - 1)]
+        .set_char('┘')
+        .set_style(edge);
+    put(
+        buf,
+        popup.x + 2,
+        popup.y,
+        " Keys · ↑↓ scroll · F1/Esc close ",
+        bg.fg(ACCENT).add_modifier(Modifier::BOLD),
+        popup.right() - 1,
+    );
+    if off > 0 {
+        put(buf, popup.right() - 4, popup.y, " ↑ ", edge, popup.right() - 1);
+    }
+    if off < max_off {
+        put(
+            buf,
+            popup.right() - 4,
+            popup.bottom() - 1,
+            " ↓ ",
+            edge,
+            popup.right() - 1,
+        );
     }
 }
 
@@ -544,8 +705,8 @@ fn draw_status(buf: &mut TBuf, app: &mut App, area: Rect) -> Option<(u16, u16)> 
         Some((m, false)) => (m.clone(), bg.fg(GREEN)),
         None => (
             match app.focus {
-                Focus::Tree => "↑↓ select · Enter open · Space fold · Tab diff · Ctrl+N/P file · F5 rescan · q quit",
-                Focus::Pane(_) => "Ctrl+F/G find · Ctrl+E/D change · Alt+←→ copy change · Ctrl+S save · F2 save all · Ctrl+Z/Y undo/redo · F6 focus · Esc tree · F12 mouse",
+                Focus::Tree => "F1 help · ↑↓ select · Enter open · Space fold · Tab diff · Ctrl+N/P file · F5 rescan · q quit",
+                Focus::Pane(_) => "F1 help · Ctrl+F/G find · Ctrl+E/D change · Alt+←→ copy change · Ctrl+S save · F2 save all · Ctrl+Z/Y undo/redo · F6 focus · Esc tree · F12 mouse",
             }
             .to_string(),
             bg.fg(DIM),
@@ -622,6 +783,27 @@ mod tests {
             readonly: false,
             theme: "base16-eighties.dark".into(),
         }
+    }
+
+    #[test]
+    fn help_overlay() {
+        let l = tempfile::tempdir().unwrap();
+        let r = tempfile::tempdir().unwrap();
+        write(&l.path().join("a.txt"), "one\n");
+        write(&r.path().join("a.txt"), "two\n");
+        let mut app = App::new(l.path().join("a.txt"), r.path().join("a.txt"), opts()).unwrap();
+        let mut term = Terminal::new(TestBackend::new(110, 30)).unwrap();
+        render(&mut term, &mut app);
+        key(&mut app, KeyCode::F(1), KeyModifiers::NONE);
+        let s = render(&mut term, &mut app);
+        assert!(s.contains("File tree") && s.contains("Editor") && s.contains("Ctrl+Q"));
+        key(&mut app, KeyCode::Char('x'), KeyModifiers::NONE);
+        assert_eq!(app.current_view().unwrap().bufs[1].lines[0], "two");
+        key(&mut app, KeyCode::End, KeyModifiers::NONE);
+        assert!(render(&mut term, &mut app).contains("Status-bar buttons"));
+        key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+        assert!(app.help.is_none());
+        assert!(!render(&mut term, &mut app).contains("Status-bar buttons"));
     }
 
     #[test]

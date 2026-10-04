@@ -65,6 +65,7 @@ Which files can be edited:
 | global | `Ctrl+N` / `Ctrl+P` | next / previous file |
 | global | `Ctrl+S` / `F2` | save the current file pair / save all |
 | global | `Ctrl+Z` / `Ctrl+Y` | undo / redo |
+| global | `F1` | show all keys by section |
 | global | `F5` | rescan folders |
 | global | `F12` | toggle mouse capture (turn it off to use the terminal's own text selection) |
 | global | `Ctrl+Q` | quit; asks first if anything is unsaved |

@@ -124,6 +124,8 @@ pub struct App {
     pub last_side: usize,
     pub message: Option<(String, bool)>,
     pub quit_prompt: bool,
+    /// Scroll offset of the F1 help overlay while it is open.
+    pub help: Option<usize>,
     /// Find prompt text while the prompt is open.
     pub search: Option<String>,
     last_search: String,
@@ -182,6 +184,7 @@ impl App {
             last_side: 1,
             message: None,
             quit_prompt: false,
+            help: None,
             search: None,
             last_search: String::new(),
             quit: false,
@@ -373,6 +376,10 @@ impl App {
             return;
         }
 
+        if self.help.is_some() {
+            return self.help_key(k);
+        }
+
         if self.search.is_some() {
             return self.search_key(k);
         }
@@ -383,6 +390,11 @@ impl App {
             KeyCode::Char(c) if ctrl && lower(c) == 'g' => return self.search_next(),
             KeyCode::Char(c) if ctrl && lower(c) == 'q' => return self.request_quit(),
             KeyCode::Char(c) if ctrl && lower(c) == 's' => return self.save_current(),
+            KeyCode::F(1) => {
+                self.search = None;
+                self.help = Some(0);
+                return;
+            }
             KeyCode::F(2) => {
                 self.save_all();
                 return;
@@ -414,6 +426,21 @@ impl App {
         match self.focus {
             Focus::Tree => self.tree_key(k),
             Focus::Pane(side) => self.pane_key(side, k),
+        }
+    }
+
+    fn help_key(&mut self, k: KeyEvent) {
+        let page = self.areas.panes[0].height.max(4) as usize - 2;
+        let Some(off) = &mut self.help else { return };
+        match k.code {
+            KeyCode::F(1) | KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => self.help = None,
+            KeyCode::Up | KeyCode::Char('k') => *off = off.saturating_sub(1),
+            KeyCode::Down | KeyCode::Char('j') => *off = off.saturating_add(1),
+            KeyCode::PageUp => *off = off.saturating_sub(page),
+            KeyCode::PageDown => *off = off.saturating_add(page),
+            KeyCode::Home => *off = 0,
+            KeyCode::End => *off = usize::MAX,
+            _ => {}
         }
     }
 
@@ -916,6 +943,15 @@ impl App {
         let (x, y) = (m.column, m.row);
         let p = Position::new(x, y);
         let shift = m.modifiers.contains(KeyModifiers::SHIFT);
+        if let Some(off) = &mut self.help {
+            match m.kind {
+                MouseEventKind::Down(MouseButton::Left) => self.help = None,
+                MouseEventKind::ScrollDown => *off = off.saturating_add(3),
+                MouseEventKind::ScrollUp => *off = off.saturating_sub(3),
+                _ => {}
+            }
+            return;
+        }
         match m.kind {
             MouseEventKind::Down(MouseButton::Left) => {
                 if let Some(&(_, b)) = self.areas.buttons.iter().find(|(r, _)| r.contains(p)) {
