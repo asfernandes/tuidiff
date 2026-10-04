@@ -32,12 +32,12 @@ jobs:
       fail-fast: true
       matrix:
         include:
-          - { os: ubuntu-latest, target: x86_64-unknown-linux-musl, musl: true }
-          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, musl: true }
-          - { os: macos-latest, target: aarch64-apple-darwin }
-          - { os: macos-latest, target: x86_64-apple-darwin }
-          - { os: windows-latest, target: x86_64-pc-windows-msvc, windows: true }
-          - { os: windows-11-arm, target: aarch64-pc-windows-msvc, windows: true }
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-musl, musl: true, asset: tuidiff-linux-x86_64 }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, musl: true, asset: tuidiff-linux-aarch64 }
+          - { os: macos-latest, target: aarch64-apple-darwin, asset: tuidiff-macos-aarch64 }
+          - { os: macos-latest, target: x86_64-apple-darwin, asset: tuidiff-macos-x86_64 }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, windows: true, asset: tuidiff-windows-x86_64 }
+          - { os: windows-11-arm, target: aarch64-pc-windows-msvc, windows: true, asset: tuidiff-windows-aarch64 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
@@ -51,8 +51,9 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
           WINDOWS: ${{ matrix.windows }}
+          ASSET: ${{ matrix.asset }}
         run: |
-          name="tuidiff-${GITHUB_REF_NAME}-${TARGET}"
+          name="$ASSET"
           mkdir -p "dist/$name"
           cp README.md "dist/$name/"
           cd dist
