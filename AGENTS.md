@@ -52,8 +52,10 @@ and pushes `hl_invalid_from` into the highlight cache. Positions are char indice
 display columns with `text::display_col` / `col_at_display`.
 
 Editability (`App::editable`): `--readonly` and `/dev/null` sides are never editable. In git mode the left side is
-always read-only. The right side is editable when it is a symlink (git's link into the working tree), when it is a real
-file outside the temp dir, or with `--right-editable`. Git mode is auto-detected from `git-difftool.*` temp-dir paths.
+always read-only. The right side is editable when it is a symlink (git's link into the working tree), when it is a
+`git-difftool.*` dir-diff copy (`--no-symlinks`, the Windows default, which git copies back on exit), when it is a real
+file outside the temp dir, or with `--right-editable`. Internal `tuidiff REV1..REV2` (`range_mode`) keeps both sides
+read-only. Git mode is auto-detected from `git-difftool.*` temp-dir paths.
 
 Clipboard: copy writes to the internal clipboard, the system clipboard via `arboard`, and OSC 52 as a fallback. Paste
 reads the system clipboard.

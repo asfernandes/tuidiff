@@ -133,7 +133,10 @@ mod tests {
         let w = tempfile::tempdir().unwrap();
         write(&l.path().join("f.txt"), "same");
         write(&w.path().join("f.txt"), "same");
+        #[cfg(unix)]
         std::os::unix::fs::symlink(w.path().join("f.txt"), r.path().join("f.txt")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(w.path().join("f.txt"), r.path().join("f.txt")).unwrap();
         assert!(scan_dirs(l.path(), r.path()).is_empty());
     }
 }

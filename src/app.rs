@@ -107,6 +107,10 @@ pub struct Options {
     pub right_editable: bool,
     pub readonly: bool,
     pub theme: String,
+    /// True for internal `tuidiff REV1..REV2` (both sides are commits, no
+    /// copy-back). External `git difftool -d` temp copies stay right-editable
+    /// so `--no-symlinks` (Windows default) works; git copies them back.
+    pub range_mode: bool,
 }
 
 pub struct App {
@@ -115,6 +119,7 @@ pub struct App {
     pub dir_mode: bool,
     pub git: bool,
     force_right_editable: bool,
+    range_mode: bool,
     readonly: bool,
     pub tree: Tree,
     pub tree_width: u16,
@@ -176,6 +181,7 @@ impl App {
             dir_mode,
             git,
             force_right_editable: opts.right_editable,
+            range_mode: opts.range_mode,
             readonly: opts.readonly,
             tree_width: 34,
             views: HashMap::new(),
@@ -259,8 +265,20 @@ impl App {
         if self.force_right_editable {
             return true;
         }
+        // Internal `tuidiff REV..REV`: both sides are commit blobs with no
+        // copy-back, so the right side stays read-only.
+        if self.range_mode {
+            return false;
+        }
         // git difftool -d symlinks working-tree files into the right temp dir.
         if fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+            return true;
+        }
+        // git difftool -d --no-symlinks (the default on Windows) uses plain
+        // copies instead of symlinks. Editing the temp copy is still correct:
+        // git copies modified working-tree files back when the tool exits.
+        // Only applies to dir-diff temp dirs, not plain temp files.
+        if self.dir_mode && looks_like_git_difftool(path) {
             return true;
         }
         path.exists() && !under_temp_dir(path)
@@ -1089,6 +1107,7 @@ mod tests {
             git: false,
             right_editable: false,
             readonly: false,
+            range_mode: false,
             theme: String::new(),
         }
     }
@@ -1103,31 +1122,51 @@ mod tests {
         }
         fs::write(root.join("left/a.txt"), "old\n").unwrap();
         fs::write(worktree.join("a.txt"), "new\n").unwrap();
-        // Working-tree file: git symlinks it into the right dir.
+        // Working-tree file with --symlinks: git symlinks it into the right dir.
+        #[cfg(unix)]
         std::os::unix::fs::symlink(worktree.join("a.txt"), root.join("right/a.txt")).unwrap();
-        // File from a commit: plain copy in the temp dir.
-        fs::write(root.join("left/b.txt"), "1\n").unwrap();
-        fs::write(root.join("right/b.txt"), "2\n").unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(worktree.join("a.txt"), root.join("right/a.txt")).unwrap();
+        // Working-tree file with --no-symlinks (Windows default): plain copy
+        // in the temp dir. Git copies it back when the tool exits.
+        fs::write(root.join("left/c.txt"), "old\n").unwrap();
+        fs::write(root.join("right/c.txt"), "new\n").unwrap();
 
         let mut app = App::new(root.join("left"), root.join("right"), opts()).unwrap();
         assert!(app.git, "auto-detected from the temp dir name");
         app.open_view("a.txt".into());
         let v = app.current_view().unwrap();
         assert!(!v.bufs[0].editable && v.bufs[1].editable);
-        app.open_view("b.txt".into());
+        app.open_view("c.txt".into());
         let v = app.current_view().unwrap();
-        assert!(!v.bufs[0].editable && !v.bufs[1].editable);
+        assert!(!v.bufs[0].editable && v.bufs[1].editable);
+
+        // Internal `tuidiff REV..REV`: both sides are commits with no
+        // copy-back, so the right side stays read-only.
+        let range_app = App::new(
+            root.join("left"),
+            root.join("right"),
+            Options {
+                range_mode: true,
+                ..opts()
+            },
+        )
+        .unwrap();
+        assert!(range_app.git);
+        assert!(!range_app.editable(1, &root.join("right/c.txt")));
+        assert!(!range_app.editable(1, &root.join("right/a.txt")));
 
         let app = App::new(
             root.join("left"),
             root.join("right"),
             Options {
                 right_editable: true,
+                range_mode: true,
                 ..opts()
             },
         )
         .unwrap();
-        assert!(app.editable(1, &root.join("right/b.txt")));
+        assert!(app.editable(1, &root.join("right/c.txt")));
     }
 
     #[test]

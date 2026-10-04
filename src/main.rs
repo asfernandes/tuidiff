@@ -45,11 +45,13 @@ struct Cli {
     left: Option<PathBuf>,
     /// Right (new) folder or file; with a commit range, the folder to limit it to
     right: Option<PathBuf>,
-    /// git difftool mode: left is read-only, right is editable only for
-    /// working-tree files (auto-detected for `git difftool -d` temp dirs)
+    /// git difftool mode: left is read-only, right is editable
+    /// (auto-detected for `git difftool -d` temp dirs, including
+    /// `--no-symlinks` copies, which git copies back on exit)
     #[arg(long)]
     git: bool,
-    /// In git mode, allow editing all right-side files (e.g. with --no-symlinks)
+    /// In git mode, allow editing all right-side files (e.g. internal
+    /// `tuidiff REV..REV` commit blobs, which are otherwise read-only)
     #[arg(long)]
     right_editable: bool,
     /// Open everything read-only
@@ -74,21 +76,22 @@ fn main() -> Result<()> {
     let left = cli.left.unwrap();
     // Keep the guard alive until exit so the temp dirs are removed.
     let range = left.to_str().filter(|_| !left.exists()).and_then(gitdiff::split_range);
-    let (left, right, git_head, _guard) = match (range, cli.right) {
+    let (left, right, git_head, range_mode, _guard) = match (range, cli.right) {
         (Some((l, r, three)), dir) => {
             let d = gitdiff::prepare_range(dir.as_deref().unwrap_or(Path::new(".")), l, r, three)?;
-            (d.left.clone(), d.right.clone(), true, Some(d))
+            (d.left.clone(), d.right.clone(), true, true, Some(d))
         }
-        (None, Some(right)) => (left, right, false, None),
+        (None, Some(right)) => (left, right, false, false, None),
         (None, None) => {
             let d = gitdiff::prepare(&left)?;
-            (d.left.clone(), d.right.clone(), true, Some(d))
+            (d.left.clone(), d.right.clone(), true, false, Some(d))
         }
     };
     let opts = Options {
         git: cli.git || git_head,
         right_editable: cli.right_editable,
         readonly: cli.readonly,
+        range_mode,
         theme: cli.theme,
     };
     let mut app = App::new(left, right, opts)?;
