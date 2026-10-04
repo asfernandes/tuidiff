@@ -42,7 +42,7 @@ Single binary, flat module layout in `src/`:
 - `scan.rs` / `tree.rs`: recursive folder comparison (skips `.git`, lists only differing files) and the collapsible tree
   built from it.
 - `gitdiff.rs`: single-path mode (`tuidiff .`). It shells out to `git`, writes changed HEAD files into a temp dir (left)
-  and symlinks to the working tree (right), so the rest of the app just sees two folders. The `TempDir` guard is held in
+  and symlinks to the working tree (right), so the rest of the app just sees two folders. `tuidiff REV1..REV2 [PATH]` (`prepare_range`) does the same for two commits, writing both sides as real files. The `TempDir` guard is held in
   `main` until exit.
 - `text.rs`: display-width helpers (tabs, wide chars, control-char stand-ins) shared by rendering and mouse hit-testing,
   plus base64 for OSC 52.

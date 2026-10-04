@@ -9,7 +9,7 @@ mod tree;
 mod ui;
 
 use std::io::{Write, stdout};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -31,10 +31,12 @@ use app::{App, Options};
 #[command(version, verbatim_doc_comment)]
 struct Cli {
     /// Left (old) folder or file; or, when given alone, a folder inside a git
-    /// repository to compare against HEAD (like `git difftool -d HEAD`)
+    /// repository to compare against HEAD (like `git difftool -d HEAD`); or a
+    /// commit range `REV1..REV2` / `REV1...REV2` (RIGHT then optionally limits
+    /// the diff to a folder, default `.`)
     #[arg(required_unless_present = "list_themes")]
     left: Option<PathBuf>,
-    /// Right (new) folder or file
+    /// Right (new) folder or file; with a commit range, the folder to limit it to
     right: Option<PathBuf>,
     /// git difftool mode: left is read-only, right is editable only for
     /// working-tree files (auto-detected for `git difftool -d` temp dirs)
@@ -64,9 +66,14 @@ fn main() -> Result<()> {
     }
     let left = cli.left.unwrap();
     // Keep the guard alive until exit so the temp dirs are removed.
-    let (left, right, git_head, _guard) = match cli.right {
-        Some(right) => (left, right, false, None),
-        None => {
+    let range = left.to_str().filter(|_| !left.exists()).and_then(gitdiff::split_range);
+    let (left, right, git_head, _guard) = match (range, cli.right) {
+        (Some((l, r, three)), dir) => {
+            let d = gitdiff::prepare_range(dir.as_deref().unwrap_or(Path::new(".")), l, r, three)?;
+            (d.left.clone(), d.right.clone(), true, Some(d))
+        }
+        (None, Some(right)) => (left, right, false, None),
+        (None, None) => {
             let d = gitdiff::prepare(&left)?;
             (d.left.clone(), d.right.clone(), true, Some(d))
         }

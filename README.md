@@ -25,6 +25,7 @@ If you like this project and want to support its development, you can donate via
 ```
 tuidiff <LEFT> <RIGHT>          # two folders or two files
 tuidiff .                       # inside a git repo: HEAD vs. working tree (like `git difftool -d HEAD`)
+tuidiff <REV1>..<REV2> [PATH]   # inside a git repo: two commits (read-only); `...` uses the merge base
 tuidiff --git <LOCAL> <REMOTE>  # git mode
 tuidiff --list-themes
 tuidiff --theme "Solarized (dark)" a b
@@ -50,6 +51,7 @@ Which files can be edited:
 | Plain folder/file diff | editable | editable |
 | git, right side is the working tree | read-only | **editable**: saved straight into your working tree through git's symlinks |
 | git, right side is a commit | read-only | read-only, because git would throw your edits away |
+| `tuidiff REV1..REV2` | read-only | read-only (both sides are commits) |
 
 `--git` is auto-detected when the paths are inside a `git-difftool.*` temp dir. If you use `git difftool -d --no-symlinks`, pass `--right-editable`. Git copies modified working-tree files back when the tool exits.
 
