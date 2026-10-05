@@ -872,9 +872,20 @@ impl App {
         if !self.dir_mode {
             return;
         }
-        if let Some(id) = self.tree.adjacent_file(forward) {
-            self.tree.reveal(id);
-            self.open_view(self.tree.nodes[id].rel.clone());
+        match self.tree.adjacent_file(forward) {
+            Some(id) => {
+                self.tree.reveal(id);
+                self.open_view(self.tree.nodes[id].rel.clone());
+            }
+            None if !self.tree.files.is_empty() => self.set_message(
+                if forward {
+                    "Already at the last file"
+                } else {
+                    "Already at the first file"
+                },
+                false,
+            ),
+            None => {}
         }
     }
 

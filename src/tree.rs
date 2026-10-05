@@ -197,31 +197,26 @@ impl Tree {
         }
     }
 
-    /// The file after/before the selected node in DFS order (wrapping).
+    /// The file after/before the selected node in DFS order, or `None` past the last/first file.
     pub fn adjacent_file(&self, forward: bool) -> Option<usize> {
-        if self.files.is_empty() {
-            return None;
-        }
         let cur = self.selected_node();
         let pos = cur.and_then(|c| self.files.iter().position(|&f| f == c));
-        let n = self.files.len();
         let idx = match (pos, forward) {
-            (Some(p), true) => (p + 1) % n,
-            (Some(p), false) => (p + n - 1) % n,
+            (Some(p), true) => p + 1,
+            (Some(p), false) => p.checked_sub(1)?,
             (None, true) => {
                 // From a directory: first file whose display position follows it.
-                let after = cur.map_or(0, |c| self.dfs_pos[c]);
-                self.files.iter().position(|&f| self.dfs_pos[f] > after).unwrap_or(0)
+                let after = cur.map(|c| self.dfs_pos[c]);
+                self.files
+                    .iter()
+                    .position(|&f| after.is_none_or(|a| self.dfs_pos[f] > a))?
             }
             (None, false) => {
                 let before = cur.map_or(usize::MAX, |c| self.dfs_pos[c]);
-                self.files
-                    .iter()
-                    .rposition(|&f| self.dfs_pos[f] < before)
-                    .unwrap_or(n - 1)
+                self.files.iter().rposition(|&f| self.dfs_pos[f] < before)?
             }
         };
-        Some(self.files[idx])
+        self.files.get(idx).copied()
     }
 
     /// Clamps the offset to `height` rows and, if the selection changed since the last call, scrolls it into view.
@@ -301,6 +296,8 @@ mod tests {
         let next = t.adjacent_file(true).unwrap();
         assert_eq!(t.nodes[next].name, "z");
         t.reveal(next);
-        assert_eq!(t.nodes[t.adjacent_file(true).unwrap()].name, "x");
+        assert_eq!(t.adjacent_file(true), None);
+        t.reveal(t.find(Path::new("d/x")).unwrap());
+        assert_eq!(t.adjacent_file(false), None);
     }
 }
