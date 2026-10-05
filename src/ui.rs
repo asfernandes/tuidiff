@@ -135,6 +135,7 @@ const HELP: &[HelpSection] = &[
                 "Alt+→ / Alt+←",
                 "copy the change under the cursor left→right / right→left",
             ),
+            ("Alt+Shift+→ / Alt+Shift+←", "move the divider between the panes"),
             ("Ctrl+N / Ctrl+P", "next / previous file"),
             ("Ctrl+S / F2", "save the current file pair / save all"),
             ("Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z)", "undo / redo"),
@@ -193,6 +194,7 @@ const HELP: &[HelpSection] = &[
             ("« / »", "copy a change to the other side"),
             ("Scrollbar click / drag", "scroll"),
             ("Drag the tree border", "resize the tree"),
+            ("Drag the pane divider", "resize the panes (double-click: 50:50)"),
             ("Status-bar buttons", "navigate, save, quit"),
         ],
     ),
@@ -433,7 +435,10 @@ fn draw_diff(buf: &mut TBuf, app: &mut App, area: Rect) -> Option<(u16, u16)> {
         return None;
     };
     let [header, body] = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
-    let cols = [Constraint::Fill(1), Constraint::Length(3), Constraint::Fill(1)];
+    let avail = u32::from(body.width.saturating_sub(3));
+    let min = 10.min(avail / 2);
+    let lw = ((avail * u32::from(app.pane_split) + 500) / 1000).clamp(min, avail - min) as u16;
+    let cols = [Constraint::Length(lw), Constraint::Length(3), Constraint::Fill(1)];
     let [lp, center, rp] = Layout::horizontal(cols).areas(body);
     let [lh, ch, rh] = Layout::horizontal(cols).areas(header);
     fill(buf, ch, Style::new().bg(BG_HEADER));
@@ -454,6 +459,7 @@ fn draw_diff(buf: &mut TBuf, app: &mut App, area: Rect) -> Option<(u16, u16)> {
     };
     let ((lp, lbar), (rp, rbar)) = (split(lp), split(rp));
     app.areas.center = center;
+    app.areas.diff_body = body;
     app.areas.panes = [lp, rp];
     app.areas.vbars[1] = lbar;
     app.areas.vbars[2] = rbar;
@@ -1052,5 +1058,49 @@ mod tests {
         mouse(&mut app, MouseEventKind::Up(MouseButton::Left), lb.x, 0);
         assert_eq!(app.current_view().unwrap().scroll, 0);
         assert_eq!(app.current_view().unwrap().bufs[1].cursor, cursor);
+    }
+
+    #[test]
+    fn pane_divider_resizes_panes() {
+        let d = tempfile::tempdir().unwrap();
+        let (l, r) = (d.path().join("l.txt"), d.path().join("r.txt"));
+        write(&l, "a\nb\n");
+        write(&r, "a\nc\n");
+        let mut app = App::new(l, r, opts()).unwrap();
+        let mut term = Terminal::new(TestBackend::new(83, 10)).unwrap();
+        render(&mut term, &mut app);
+        // 80 columns for the panes (each including its scrollbar), split 50:50.
+        let c = app.areas.center;
+        assert_eq!(c.x, 40);
+        let div = c.x + 1;
+
+        // Drag the divider 15 columns left; the headers follow the panes.
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), div, c.y + 3);
+        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), div - 15, c.y + 3);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), div - 15, c.y + 3);
+        render(&mut term, &mut app);
+        assert_eq!(app.areas.center.x, 25);
+        assert_eq!(app.areas.panes[1].x, 28);
+        assert_eq!(app.areas.vbars[2].right(), 83);
+        assert_eq!(app.areas.panes[0].width + 1, 25);
+
+        // Dragging past the edge keeps a minimum width.
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 26, c.y);
+        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), 200, c.y);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), 200, c.y);
+        render(&mut term, &mut app);
+        assert_eq!(app.areas.center.x, 70);
+
+        // Alt+Shift+arrows nudge it by 2 columns.
+        key(&mut app, KeyCode::Left, KeyModifiers::ALT | KeyModifiers::SHIFT);
+        render(&mut term, &mut app);
+        assert_eq!(app.areas.center.x, 68);
+        assert_eq!(app.current_view().unwrap().bufs[1].lines[1], "c");
+
+        // Double-click resets to 50:50.
+        click(&mut app, 69, c.y);
+        click(&mut app, 69, c.y);
+        render(&mut term, &mut app);
+        assert_eq!(app.areas.center.x, 40);
     }
 }
