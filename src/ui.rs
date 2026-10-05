@@ -902,6 +902,28 @@ mod tests {
     }
 
     #[test]
+    fn prev_change_skips_deletion_above_cursor() {
+        let l = tempfile::tempdir().unwrap();
+        let r = tempfile::tempdir().unwrap();
+        write(&l.path().join("a.txt"), "a\nX\nb\nc\nY\nd\n");
+        write(&r.path().join("a.txt"), "a\nb\nc\nd\n");
+        let mut app = App::new(l.path().join("a.txt"), r.path().join("a.txt"), opts()).unwrap();
+        let mut term = Terminal::new(TestBackend::new(110, 12)).unwrap();
+        render(&mut term, &mut app);
+        app.focus = crate::app::Focus::Pane(1);
+        let line = |app: &App| app.current_view().unwrap().bufs[1].cursor.line;
+        key(&mut app, KeyCode::Char('d'), KeyModifiers::CONTROL);
+        key(&mut app, KeyCode::Char('d'), KeyModifiers::CONTROL);
+        assert_eq!(line(&app), 3);
+        // The deletion right above the cursor lands on the same line, so go past it.
+        key(&mut app, KeyCode::Char('e'), KeyModifiers::CONTROL);
+        assert_eq!(line(&app), 1);
+        key(&mut app, KeyCode::Char('e'), KeyModifiers::CONTROL);
+        assert_eq!(line(&app), 1);
+        assert!(render(&mut term, &mut app).contains("No more changes"));
+    }
+
+    #[test]
     fn folder_diff_edit_and_save() {
         let l = tempfile::tempdir().unwrap();
         let r = tempfile::tempdir().unwrap();
