@@ -107,6 +107,8 @@ pub struct Areas {
     pub panes: [Rect; 2],
     pub gutter: [u16; 2],
     pub center: Rect,
+    /// Body of the diff area: left pane, center column and right pane.
+    pub diff_body: Rect,
     /// Vertical scrollbars of the tree, left pane and right pane (empty when not drawn).
     pub vbars: [Rect; 3],
     pub buttons: Vec<(Rect, Button)>,
@@ -115,6 +117,8 @@ pub struct Areas {
 
 enum Drag {
     Splitter,
+    /// The divider between the left and right panes.
+    PaneSplit,
     /// Scrollbar thumb of panel (0 = tree, 1/2 = left/right pane), grabbed `grab` cells below its top.
     Scrollbar {
         panel: usize,
@@ -144,6 +148,8 @@ pub struct App {
     readonly: bool,
     pub tree: Tree,
     pub tree_width: u16,
+    /// Left pane's share of the panes' width, in permille (not persisted; starts at 50:50).
+    pub pane_split: u16,
     pub views: HashMap<PathBuf, FileView>,
     pub current: Option<PathBuf>,
     pub focus: Focus,
@@ -205,6 +211,7 @@ impl App {
             range_mode: opts.range_mode,
             readonly: opts.readonly,
             tree_width: 34,
+            pane_split: 500,
             views: HashMap::new(),
             current: None,
             focus: if dir_mode { Focus::Tree } else { Focus::Pane(1) },
@@ -444,6 +451,8 @@ impl App {
             KeyCode::Char(c) if ctrl && lower(c) == 'e' => return self.goto_hunk(false),
             KeyCode::Down if alt => return self.goto_hunk(true),
             KeyCode::Up if alt => return self.goto_hunk(false),
+            KeyCode::Right if alt && shift => return self.set_split_x(self.areas.center.x + 3),
+            KeyCode::Left if alt && shift => return self.set_split_x(self.areas.center.x.saturating_sub(1)),
             KeyCode::Right if alt => return self.copy_current_hunk(0, 1),
             KeyCode::Left if alt => return self.copy_current_hunk(1, 0),
             KeyCode::F(6) => return self.cycle_focus(!shift),
@@ -1019,6 +1028,12 @@ impl App {
                 self.search = None;
                 if self.areas.splitter == Some(x) && self.areas.tree.y <= y && y < self.areas.tree.bottom() {
                     self.drag = Some(Drag::Splitter);
+                } else if self.areas.center.contains(p) && x == self.areas.center.x + 1 {
+                    if self.double_click(x, y) {
+                        self.pane_split = 500;
+                    } else {
+                        self.drag = Some(Drag::PaneSplit);
+                    }
                 } else if let Some(panel) = (0..3).find(|&i| self.areas.vbars[i].contains(p)) {
                     self.click_scrollbar(panel, y);
                 } else if self.areas.tree.contains(p) {
@@ -1033,6 +1048,7 @@ impl App {
                 Some(Drag::Splitter) => {
                     self.tree_width = (x + 1).clamp(12, self.areas.width.saturating_sub(20).max(12));
                 }
+                Some(Drag::PaneSplit) => self.set_split_x(x),
                 Some(Drag::Scrollbar { panel, grab }) => self.drag_scrollbar(panel, y, grab),
                 Some(Drag::Select(side)) => {
                     let a = self.areas.panes[side];
@@ -1144,6 +1160,28 @@ impl App {
         }
     }
 
+    /// Records a click at (x, y); true when it completes a double-click there.
+    fn double_click(&mut self, x: u16, y: u16) -> bool {
+        let now = Instant::now();
+        let double = self
+            .last_click
+            .is_some_and(|(t, lx, ly)| lx == x && ly == y && now.duration_since(t) < Duration::from_millis(400));
+        self.last_click = if double { None } else { Some((now, x, y)) };
+        double
+    }
+
+    /// Moves the divider between the panes to screen column `x`.
+    fn set_split_x(&mut self, x: u16) {
+        let body = self.areas.diff_body;
+        let avail = u32::from(body.width.saturating_sub(3));
+        if avail == 0 {
+            return;
+        }
+        // The divider is the middle of the 3-column center, one column after the left pane.
+        let left = u32::from(x.saturating_sub(body.x + 1)).min(avail);
+        self.pane_split = ((left * 1000 + avail / 2) / avail) as u16;
+    }
+
     fn click_center(&mut self, x: u16, y: u16) {
         let c = self.areas.center;
         let Some(fv) = self.current_view() else { return };
@@ -1161,15 +1199,10 @@ impl App {
     fn click_pane(&mut self, side: usize, x: u16, y: u16, shift: bool) {
         self.set_focus(Focus::Pane(side));
         let Some(pos) = self.pos_at(side, x, y) else { return };
-        let now = Instant::now();
-        let double = self
-            .last_click
-            .is_some_and(|(t, lx, ly)| lx == x && ly == y && now.duration_since(t) < Duration::from_millis(400));
-        self.last_click = Some((now, x, y));
+        let double = self.double_click(x, y);
         let Some(fv) = self.current_view_mut() else { return };
         if double {
             fv.bufs[side].select_word_at(pos);
-            self.last_click = None;
         } else {
             fv.bufs[side].set_cursor(pos, shift);
             self.drag = Some(Drag::Select(side));
