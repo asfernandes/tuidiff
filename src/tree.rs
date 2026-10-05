@@ -28,6 +28,9 @@ pub struct Tree {
     pub visible: Vec<VisRow>,
     pub selected: usize,
     pub offset: usize,
+    /// Selection when the tree was last drawn; the offset follows the selection only when it changes, so the
+    /// tree can be scrolled away from it with the wheel or the scrollbar.
+    pub shown_selected: Option<usize>,
     /// File nodes in display (DFS) order, regardless of expansion.
     pub files: Vec<usize>,
     /// Display (DFS) position of every node.
@@ -221,14 +224,18 @@ impl Tree {
         Some(self.files[idx])
     }
 
+    /// Clamps the offset to `height` rows and, if the selection changed since the last call, scrolls it into view.
     pub fn ensure_visible(&mut self, height: usize) {
         if height == 0 {
             return;
         }
-        if self.selected < self.offset {
-            self.offset = self.selected;
-        } else if self.selected >= self.offset + height {
-            self.offset = self.selected + 1 - height;
+        if self.shown_selected != Some(self.selected) {
+            self.shown_selected = Some(self.selected);
+            if self.selected < self.offset {
+                self.offset = self.selected;
+            } else if self.selected >= self.offset + height {
+                self.offset = self.selected + 1 - height;
+            }
         }
         let max = self.visible.len().saturating_sub(height);
         self.offset = self.offset.min(max);

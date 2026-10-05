@@ -17,6 +17,7 @@ use crate::highlight::{Highlighter, HlCache};
 use crate::scan;
 use crate::text::{col_at_display, display_col};
 use crate::tree::Tree;
+use crate::ui;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Focus {
@@ -53,6 +54,11 @@ impl FileView {
             }
         }
         self.scroll = self.scroll.min(self.diff.rows.len().saturating_sub(1));
+    }
+
+    /// Row count the scrollbar spans for a pane `height` rows tall (grows when scrolled past the end).
+    pub fn scroll_total(&self, height: usize) -> usize {
+        self.diff.rows.len().max(self.scroll + height)
     }
 
     pub fn cursor_row(&self, side: usize) -> usize {
@@ -93,12 +99,19 @@ pub struct Areas {
     pub panes: [Rect; 2],
     pub gutter: [u16; 2],
     pub center: Rect,
+    /// Vertical scrollbars of the tree, left pane and right pane (empty when not drawn).
+    pub vbars: [Rect; 3],
     pub buttons: Vec<(Rect, Button)>,
     pub width: u16,
 }
 
 enum Drag {
     Splitter,
+    /// Scrollbar thumb of panel (0 = tree, 1/2 = left/right pane), grabbed `grab` cells below its top.
+    Scrollbar {
+        panel: usize,
+        grab: u16,
+    },
     Select(usize),
 }
 
@@ -983,6 +996,8 @@ impl App {
                 self.search = None;
                 if self.areas.splitter == Some(x) && self.areas.tree.y <= y && y < self.areas.tree.bottom() {
                     self.drag = Some(Drag::Splitter);
+                } else if let Some(panel) = (0..3).find(|&i| self.areas.vbars[i].contains(p)) {
+                    self.click_scrollbar(panel, y);
                 } else if self.areas.tree.contains(p) {
                     self.click_tree(y);
                 } else if self.areas.center.contains(p) {
@@ -995,6 +1010,7 @@ impl App {
                 Some(Drag::Splitter) => {
                     self.tree_width = (x + 1).clamp(12, self.areas.width.saturating_sub(20).max(12));
                 }
+                Some(Drag::Scrollbar { panel, grab }) => self.drag_scrollbar(panel, y, grab),
                 Some(Drag::Select(side)) => {
                     let a = self.areas.panes[side];
                     if let Some(fv) = self.current_view_mut() {
@@ -1016,7 +1032,7 @@ impl App {
             MouseEventKind::Up(MouseButton::Left) => self.drag = None,
             MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
                 let down = m.kind == MouseEventKind::ScrollDown;
-                if self.areas.tree.contains(p) {
+                if self.areas.tree.contains(p) || self.areas.vbars[0].contains(p) {
                     let max = self.tree.visible.len().saturating_sub(self.areas.tree.height as usize);
                     self.tree.offset = if down {
                         (self.tree.offset + 3).min(max)
@@ -1047,6 +1063,46 @@ impl App {
             for s in sides {
                 fv.hscroll[s] = fv.hscroll[s].saturating_add_signed(delta);
             }
+        }
+    }
+
+    /// (total rows, offset) behind scrollbar `panel`.
+    fn scroll_state(&self, panel: usize) -> Option<(usize, usize)> {
+        if panel == 0 {
+            return Some((self.tree.visible.len(), self.tree.offset));
+        }
+        let fv = self.current_view()?;
+        Some((fv.scroll_total(self.areas.vbars[panel].height as usize), fv.scroll))
+    }
+
+    /// Grabs the thumb, or centers it on `y` when clicking the track.
+    fn click_scrollbar(&mut self, panel: usize, y: u16) {
+        let a = self.areas.vbars[panel];
+        let Some((total, offset)) = self.scroll_state(panel) else {
+            return;
+        };
+        let (start, len) = ui::thumb(a.height, total, offset, a.height as usize);
+        let rel = y - a.y;
+        let grab = if (start..start + len).contains(&rel) {
+            rel - start
+        } else {
+            len / 2
+        };
+        self.drag = Some(Drag::Scrollbar { panel, grab });
+        self.drag_scrollbar(panel, y, grab);
+    }
+
+    fn drag_scrollbar(&mut self, panel: usize, y: u16, grab: u16) {
+        let a = self.areas.vbars[panel];
+        let Some((total, _)) = self.scroll_state(panel) else {
+            return;
+        };
+        let rel = y.clamp(a.y, a.bottom().saturating_sub(1)) - a.y;
+        let offset = ui::offset_at(a.height, total, a.height as usize, rel, grab);
+        if panel == 0 {
+            self.tree.offset = offset;
+        } else if let Some(fv) = self.current_view_mut() {
+            fv.scroll = offset;
         }
     }
 
