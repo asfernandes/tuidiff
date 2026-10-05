@@ -51,6 +51,43 @@ fn put(buf: &mut TBuf, x: u16, y: u16, s: &str, style: Style, max_x: u16) -> u16
     buf.set_stringn(x, y, s, (max_x - x) as usize, style).0
 }
 
+/// Thumb (start, length) of a scrollbar `track` cells tall over `total` rows of which `visible` start at `offset`.
+pub fn thumb(track: u16, total: usize, offset: usize, visible: usize) -> (u16, u16) {
+    if track == 0 || total <= visible {
+        return (0, track);
+    }
+    let t = track as usize;
+    let len = (t * visible).div_ceil(total).clamp(1, t);
+    let max_off = total - visible;
+    let start = ((t - len) * offset.min(max_off) + max_off / 2) / max_off;
+    (start as u16, len as u16)
+}
+
+/// Offset that puts the thumb's top at `y - grab` (track-relative); the inverse of [`thumb`].
+pub fn offset_at(track: u16, total: usize, visible: usize, y: u16, grab: u16) -> usize {
+    let (_, len) = thumb(track, total, 0, visible);
+    let span = (track - len) as usize;
+    if span == 0 {
+        return 0;
+    }
+    let max_off = total - visible;
+    let pos = (y.saturating_sub(grab) as usize).min(span);
+    (pos * max_off + span / 2) / span
+}
+
+fn draw_vbar(buf: &mut TBuf, area: Rect, total: usize, offset: usize, focused: bool) {
+    let (start, len) = thumb(area.height, total, offset, area.height as usize);
+    let thumb_bg = if focused { ACCENT } else { DIM };
+    for i in 0..area.height {
+        let bg = if (start..start + len).contains(&i) {
+            thumb_bg
+        } else {
+            BG_FILL
+        };
+        buf[(area.x, area.y + i)].set_char(' ').set_style(Style::new().bg(bg));
+    }
+}
+
 /// Time per frame spent on syntax highlighting before deferring the rest.
 const HL_BUDGET: Duration = Duration::from_millis(25);
 
@@ -154,6 +191,7 @@ const HELP: &[HelpSection] = &[
             ),
             ("Wheel (Shift = sideways)", "scroll"),
             ("« / »", "copy a change to the other side"),
+            ("Scrollbar click / drag", "scroll"),
             ("Drag the tree border", "resize the tree"),
             ("Status-bar buttons", "navigate, save, quit"),
         ],
@@ -252,7 +290,7 @@ fn status_color(s: Status) -> Color {
 }
 
 fn draw_tree(buf: &mut TBuf, app: &mut App, area: Rect) {
-    if area.width < 2 || area.height < 2 {
+    if area.width < 3 || area.height < 2 {
         return;
     }
     let focused = app.focus == Focus::Tree;
@@ -277,9 +315,12 @@ fn draw_tree(buf: &mut TBuf, app: &mut App, area: Rect) {
         header.right(),
     );
 
-    let list = Rect::new(area.x, area.y + 1, area.width - 1, area.height - 1);
+    let list = Rect::new(area.x, area.y + 1, area.width - 2, area.height - 1);
+    let bar = Rect::new(list.right(), list.y, 1, list.height);
     app.areas.tree = list;
+    app.areas.vbars[0] = bar;
     app.tree.ensure_visible(list.height as usize);
+    draw_vbar(buf, bar, app.tree.visible.len(), app.tree.offset, focused);
     let tree = &app.tree;
     for (i, vr) in tree
         .visible
@@ -397,17 +438,36 @@ fn draw_diff(buf: &mut TBuf, app: &mut App, area: Rect) -> Option<(u16, u16)> {
     let [lh, ch, rh] = Layout::horizontal(cols).areas(header);
     fill(buf, ch, Style::new().bg(BG_HEADER));
     let labels = [header_label(app, 0, &key), header_label(app, 1, &key)];
+    // The last column of each pane is its scrollbar.
+    let split = |r: Rect| {
+        if r.width < 2 {
+            return (r, Rect::default());
+        }
+        let bar = Rect::new(r.right() - 1, r.y, 1, r.height);
+        (
+            Rect {
+                width: r.width - 1,
+                ..r
+            },
+            bar,
+        )
+    };
+    let ((lp, lbar), (rp, rbar)) = (split(lp), split(rp));
     app.areas.center = center;
     app.areas.panes = [lp, rp];
+    app.areas.vbars[1] = lbar;
+    app.areas.vbars[2] = rbar;
 
     let focus = app.focus;
     let deadline = Instant::now() + HL_BUDGET;
     let fv = app.views.get_mut(&key)?;
     fv.refresh();
     let mut cursor = None;
-    for (side, (pane, head)) in [(lp, lh), (rp, rh)].into_iter().enumerate() {
+    let total = fv.scroll_total(body.height as usize);
+    for (side, (pane, head, bar)) in [(lp, lh, lbar), (rp, rh, rbar)].into_iter().enumerate() {
         let focused = focus == Focus::Pane(side);
         draw_header(buf, head, &labels[side], &fv.bufs[side], focused);
+        draw_vbar(buf, bar, total, fv.scroll, focused);
         let digits = fv.bufs[side].lines.len().to_string().len().max(3) as u16;
         let gutter = (digits + 1).min(pane.width);
         app.areas.gutter[side] = gutter;
@@ -731,7 +791,9 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+    use ratatui::layout::Position;
 
+    use super::{offset_at, thumb};
     use crate::app::{App, Options};
 
     fn write(p: &Path, s: &str) {
@@ -774,6 +836,15 @@ mod tests {
         };
         app.handle_event(ev(MouseEventKind::Down(MouseButton::Left)));
         app.handle_event(ev(MouseEventKind::Up(MouseButton::Left)));
+    }
+
+    fn mouse(app: &mut App, kind: MouseEventKind, x: u16, y: u16) {
+        app.handle_event(Event::Mouse(MouseEvent {
+            kind,
+            column: x,
+            row: y,
+            modifiers: KeyModifiers::NONE,
+        }));
     }
 
     fn opts() -> Options {
@@ -879,5 +950,85 @@ mod tests {
         println!("{s}");
         assert!(app.current_view().unwrap().diff.hunks.is_empty());
         assert!(s.contains("✎"));
+    }
+
+    #[test]
+    fn scrollbar_geometry() {
+        assert_eq!(thumb(10, 5, 0, 10), (0, 10));
+        assert_eq!(thumb(10, 100, 0, 10), (0, 1));
+        assert_eq!(thumb(10, 100, 90, 10), (9, 1));
+        assert_eq!(thumb(10, 20, 10, 10), (5, 5));
+        assert_eq!(offset_at(10, 5, 10, 7, 0), 0);
+        assert_eq!(offset_at(10, 100, 10, 9, 0), 90);
+        assert_eq!(offset_at(10, 100, 10, 0, 3), 0);
+        assert_eq!(offset_at(10, 20, 10, 9, 2), 10);
+        for off in 0..=90 {
+            let (start, _) = thumb(10, 100, off, 10);
+            let back = offset_at(10, 100, 10, start, 0);
+            assert_eq!(thumb(10, 100, back, 10).0, start);
+        }
+    }
+
+    #[test]
+    fn scrollbars_scroll_panes_and_tree() {
+        let l = tempfile::tempdir().unwrap();
+        let r = tempfile::tempdir().unwrap();
+        let long: String = (0..100).map(|i| format!("line {i}\n")).collect();
+        write(&l.path().join("a/long.txt"), &long);
+        write(&r.path().join("a/long.txt"), &long.replace("line 50\n", "changed\n"));
+        for i in 0..30 {
+            write(&r.path().join(format!("f{i:02}.txt")), "x\n");
+        }
+        let mut app = App::new(l.path().into(), r.path().into(), opts()).unwrap();
+        let mut term = Terminal::new(TestBackend::new(100, 14)).unwrap();
+        render(&mut term, &mut app);
+        let sel = app.tree.selected;
+
+        // Click the bottom of the tree's track: the tree scrolls to the end and stays there after a redraw.
+        let tb = app.areas.vbars[0];
+        assert!(tb.height > 0 && tb.x < app.areas.splitter.unwrap());
+        click(&mut app, tb.x, tb.bottom() - 1);
+        let max = app.tree.visible.len() - tb.height as usize;
+        assert_eq!(app.tree.offset, max);
+        render(&mut term, &mut app);
+        assert_eq!(app.tree.offset, max);
+        assert_eq!(app.tree.selected, sel);
+        // The wheel over the tree's scrollbar scrolls the tree.
+        mouse(&mut app, MouseEventKind::ScrollUp, tb.x, tb.y);
+        render(&mut term, &mut app);
+        assert_eq!(app.tree.offset, max - 3);
+
+        // Open the long file; both panes get a scrollbar sharing the scroll.
+        key(&mut app, KeyCode::Home, KeyModifiers::NONE);
+        while app.current.as_deref() != Some(Path::new("a/long.txt")) {
+            key(&mut app, KeyCode::Down, KeyModifiers::NONE);
+        }
+        app.current_view_mut().unwrap().scroll = 0;
+        render(&mut term, &mut app);
+        let [_, lb, rb] = app.areas.vbars;
+        assert_eq!(lb.right(), app.areas.center.x);
+        assert_eq!(rb.right(), 100);
+        assert!(!app.areas.panes[1].contains(Position::new(rb.x, rb.y)));
+        let cell_bg = |term: &Terminal<TestBackend>, x, y| term.backend().buffer()[(x, y)].bg;
+        assert_eq!(cell_bg(&term, rb.x, rb.y), super::DIM);
+        assert_eq!(cell_bg(&term, rb.x, rb.bottom() - 1), super::BG_FILL);
+        let cursor = app.current_view().unwrap().bufs[1].cursor;
+
+        // Click the right track's bottom: scroll to the end.
+        click(&mut app, rb.x, rb.bottom() - 1);
+        let rows = app.current_view().unwrap().diff.rows.len();
+        let end = rows - rb.height as usize;
+        assert_eq!(app.current_view().unwrap().scroll, end);
+        render(&mut term, &mut app);
+
+        // Drag the left thumb from the bottom back to the top.
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), lb.x, lb.bottom() - 1);
+        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), lb.x, lb.y + 3);
+        let mid = app.current_view().unwrap().scroll;
+        assert!(0 < mid && mid < end);
+        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), lb.x, 0);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), lb.x, 0);
+        assert_eq!(app.current_view().unwrap().scroll, 0);
+        assert_eq!(app.current_view().unwrap().bufs[1].cursor, cursor);
     }
 }

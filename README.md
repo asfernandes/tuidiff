@@ -11,7 +11,7 @@ A terminal side-by-side diff viewer and editor for folders and files, usable as 
 - Two diff panes show the old and new versions with aligned lines, syntax highlighting (syntect), and highlighted changed words within a line.
 - A built-in modeless editor provides undo/redo, selection and a clipboard. Edits recompute the diff live.
 - You can copy a change from one side to the other with Meld-style `«` / `»` arrows or `Alt+←/→`.
-- Full mouse support: clicks, drag-selection, double-click word selection, wheel scrolling, clickable change arrows and buttons, and a draggable tree splitter.
+- Full mouse support: clicks, drag-selection, double-click word selection, wheel scrolling, scrollbars, clickable change arrows and buttons, and a draggable tree splitter.
 
 ## Donation
 
@@ -82,7 +82,7 @@ Which files can be edited:
 | pane | `Ctrl+F` / `Ctrl+G` | find (plain text, case-insensitive; prefilled from the selection) / find next, wrapping at the end |
 | pane | `Esc` | back to the tree |
 
-Mouse: click a tree row to open a file or fold a folder. Click or drag in a pane to place the cursor or select, and double-click to select a word. The mouse wheel scrolls; hold `Shift` to scroll sideways. Click `«` / `»` to copy a change, drag the tree border to resize it, and use the status-bar buttons.
+Mouse: click a tree row to open a file or fold a folder. Click or drag in a pane to place the cursor or select, and double-click to select a word. The mouse wheel scrolls; hold `Shift` to scroll sideways. Click or drag the scrollbar of the tree or a pane to scroll it (both panes share one scroll position). Click `«` / `»` to copy a change, drag the tree border to resize it, and use the status-bar buttons.
 
 ## Build
 
