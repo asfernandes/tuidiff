@@ -75,6 +75,14 @@ impl FileView {
             .hunk_at_row(self.cursor_row(side))
             .or_else(|| self.diff.hunk_at_row(self.cursor_row(1 - side)))
     }
+
+    /// Line on `side` where the cursor lands when jumping to hunk `i`.
+    pub fn hunk_line(&self, side: usize, i: usize) -> usize {
+        let start = self.diff.hunks[i].rows.start;
+        self.diff
+            .line_near_row(side, start)
+            .min(self.bufs[side].lines.len() - 1)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -813,7 +821,11 @@ impl App {
         let target = if forward {
             fv.diff.hunks.iter().position(|h| h.rows.start > row)
         } else {
-            fv.diff.hunks.iter().rposition(|h| h.rows.start < row)
+            // Compare where the cursor would land, not the hunk start: a hunk that is all filler on
+            // this side lands on the line below it, which may be where the cursor already is.
+            (0..fv.diff.hunks.len())
+                .rev()
+                .find(|&i| fv.diff.row_of(side, fv.hunk_line(side, i)) < row)
         };
         let Some(i) = target else {
             let hint = if self.dir_mode {
@@ -829,7 +841,7 @@ impl App {
     fn jump_to_hunk(fv: &mut FileView, i: usize, height: usize) {
         let start = fv.diff.hunks[i].rows.start;
         for s in 0..2 {
-            let line = fv.diff.line_near_row(s, start).min(fv.bufs[s].lines.len() - 1);
+            let line = fv.hunk_line(s, i);
             fv.bufs[s].set_cursor(Pos::new(line, 0), false);
         }
         fv.scroll = start.saturating_sub(height / 4);
