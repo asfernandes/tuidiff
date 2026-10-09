@@ -10,6 +10,8 @@ pub struct Node {
     pub rel: PathBuf,
     pub is_dir: bool,
     pub status: Status,
+    /// Old path of a renamed file.
+    pub renamed_from: Option<PathBuf>,
     pub children: Vec<usize>,
     pub parent: Option<usize>,
     pub expanded: bool,
@@ -58,6 +60,7 @@ impl Tree {
                     rel: acc.clone(),
                     is_dir: !last,
                     status: e.status,
+                    renamed_from: if last { e.renamed_from.clone() } else { None },
                     children: Vec::new(),
                     parent,
                     expanded: true,
@@ -245,6 +248,7 @@ mod tests {
         Entry {
             rel: p.into(),
             status: s,
+            renamed_from: None,
         }
     }
 

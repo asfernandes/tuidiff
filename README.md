@@ -7,7 +7,7 @@ A terminal side-by-side diff viewer and editor for folders and files, usable as 
 ![tuidiff screenshot](screenshots/main.png)
 
 - A folder tree on the left shows only files that differ, drawn with Unicode tree guides (`├─ └─ │`) and folder icons.
-  - `●` means modified, `✚` only on the right, `✖` only on the left, and `✔` identical after your edits. `✎` marks unsaved changes.
+  - `●` means modified, `✚` only on the right, `✖` only on the left, `➜` renamed with identical content, and `✔` identical after your edits. Renamed files (also with edits, when at least half the content matches) are paired automatically and show `← old path`; use `--no-renames` to turn this off. `✎` marks unsaved changes.
 - Two diff panes show the old and new versions with aligned lines, syntax highlighting (syntect), and highlighted changed words within a line.
 - A built-in modeless editor provides undo/redo, selection and a clipboard. Edits recompute the diff live.
 - You can copy a change from one side to the other with Meld-style `«` / `»` arrows or `Alt+←/→`.

@@ -57,6 +57,9 @@ struct Cli {
     /// Open everything read-only
     #[arg(long)]
     readonly: bool,
+    /// Do not pair left-only and right-only files as renames
+    #[arg(long)]
+    no_renames: bool,
     /// Syntax highlighting theme
     #[arg(long, default_value = "base16-eighties.dark")]
     theme: String,
@@ -92,6 +95,7 @@ fn main() -> Result<()> {
         right_editable: cli.right_editable,
         readonly: cli.readonly,
         range_mode,
+        renames: !cli.no_renames,
         theme: cli.theme,
     };
     let mut app = App::new(left, right, opts)?;

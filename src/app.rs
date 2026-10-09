@@ -136,6 +136,8 @@ pub struct Options {
     /// copy-back). External `git difftool -d` temp copies stay right-editable
     /// so `--no-symlinks` (Windows default) works; git copies them back.
     pub range_mode: bool,
+    /// Pair left-only and right-only files with the same or similar content as renames.
+    pub renames: bool,
 }
 
 pub struct App {
@@ -145,6 +147,9 @@ pub struct App {
     pub git: bool,
     force_right_editable: bool,
     range_mode: bool,
+    renames: bool,
+    /// New relative path → old relative path of renamed files.
+    pub renamed: HashMap<PathBuf, PathBuf>,
     readonly: bool,
     pub tree: Tree,
     pub tree_width: u16,
@@ -209,6 +214,8 @@ impl App {
             git,
             force_right_editable: opts.right_editable,
             range_mode: opts.range_mode,
+            renames: opts.renames,
+            renamed: HashMap::new(),
             readonly: opts.readonly,
             tree_width: 34,
             pane_split: 500,
@@ -249,7 +256,11 @@ impl App {
     }
 
     fn rescan(&mut self) {
-        let entries = scan::scan_dirs(&self.left_root, &self.right_root);
+        let entries = scan::scan_dirs(&self.left_root, &self.right_root, self.renames);
+        self.renamed = entries
+            .iter()
+            .filter_map(|e| e.renamed_from.clone().map(|old| (e.rel.clone(), old)))
+            .collect();
         self.tree = Tree::build(&entries);
         let target = self
             .current
@@ -274,7 +285,10 @@ impl App {
 
     pub fn paths_for(&self, rel: &Path) -> (PathBuf, PathBuf) {
         if self.dir_mode {
-            (self.left_root.join(rel), self.right_root.join(rel))
+            (
+                self.left_root.join(self.renamed.get(rel).map_or(rel, PathBuf::as_path)),
+                self.right_root.join(rel),
+            )
         } else {
             (self.left_root.clone(), self.right_root.clone())
         }
@@ -910,7 +924,11 @@ impl App {
                 self.set_message(msg, false);
                 if self.dir_mode {
                     let (l, r) = self.paths_for(key);
-                    self.tree.set_status(key, scan::status_of(&l, &r));
+                    let mut status = scan::status_of(&l, &r);
+                    if status == scan::Status::Same && self.renamed.contains_key(key) {
+                        status = scan::Status::Renamed;
+                    }
+                    self.tree.set_status(key, status);
                 }
                 true
             }
@@ -1220,6 +1238,7 @@ mod tests {
             right_editable: false,
             readonly: false,
             range_mode: false,
+            renames: true,
             theme: String::new(),
         }
     }
