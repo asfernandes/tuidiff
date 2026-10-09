@@ -288,6 +288,7 @@ fn status_color(s: Status) -> Color {
         Status::RightOnly => GREEN,
         Status::LeftOnly => RED,
         Status::Same => DIM,
+        Status::Renamed => ACCENT,
     }
 }
 
@@ -350,6 +351,7 @@ fn draw_tree(buf: &mut TBuf, app: &mut App, area: Rect) {
                 Status::RightOnly => "✚",
                 Status::LeftOnly => "✖",
                 Status::Same => "✔",
+                Status::Renamed => "➜",
             };
             (g, color)
         };
@@ -366,6 +368,17 @@ fn draw_tree(buf: &mut TBuf, app: &mut App, area: Rect) {
             style = style.add_modifier(Modifier::CROSSED_OUT);
         }
         x = put(buf, x, y, &node.name, style, right);
+        if let Some(old) = &node.renamed_from {
+            let same_dir = old.parent() == node.rel.parent();
+            let old = if same_dir {
+                old.file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            } else {
+                old.display().to_string()
+            };
+            x = put(buf, x, y, &format!(" ← {old}"), Style::new().fg(DIM).bg(bg), right);
+        }
         if !node.is_dir && app.views.get(&node.rel).is_some_and(FileView::any_dirty) {
             put(buf, x, y, " ✎", Style::new().fg(YELLOW).bg(bg), right);
         }
@@ -382,6 +395,11 @@ fn header_label(app: &App, side: usize, rel: &std::path::Path) -> String {
     } else {
         root.file_name()
             .map_or_else(|| root.display().to_string(), |n| n.to_string_lossy().into_owned())
+    };
+    let rel = if side == 0 {
+        app.renamed.get(rel).map_or(rel, std::path::PathBuf::as_path)
+    } else {
+        rel
     };
     format!("{root_name}/{}", rel.display())
 }
@@ -859,6 +877,7 @@ mod tests {
             right_editable: false,
             readonly: false,
             range_mode: false,
+            renames: true,
             theme: "base16-eighties.dark".into(),
         }
     }
@@ -927,6 +946,28 @@ mod tests {
         key(&mut app, KeyCode::Char('e'), KeyModifiers::CONTROL);
         assert_eq!(line(&app), 1);
         assert!(render(&mut term, &mut app).contains("No more changes"));
+    }
+
+    #[test]
+    fn renamed_files_are_one_entry() {
+        let l = tempfile::tempdir().unwrap();
+        let r = tempfile::tempdir().unwrap();
+        write(&l.path().join("old/a.txt"), "one\ntwo\nthree\nfour\n");
+        write(&r.path().join("new/a.txt"), "one\ntwo\n3\nfour\n");
+        write(&l.path().join("same.txt"), "unchanged\n");
+        write(&r.path().join("moved/same.txt"), "unchanged\n");
+        let mut app = App::new(l.path().into(), r.path().into(), opts()).unwrap();
+        let mut term = Terminal::new(TestBackend::new(110, 12)).unwrap();
+        let s = render(&mut term, &mut app);
+        println!("{s}");
+        assert!(s.contains("Changes (2 files)"));
+        assert!(s.contains("● a.txt ← old/a.txt") && s.contains("➜ same.txt ← same.txt"));
+        assert!(!s.contains('✖') && !s.contains('✚'));
+        assert!(s.contains("/same.txt") && s.contains("/moved/same.txt"));
+        key(&mut app, KeyCode::Char('n'), KeyModifiers::CONTROL);
+        let s = render(&mut term, &mut app);
+        assert!(s.contains("/old/a.txt") && s.contains("/new/a.txt"));
+        assert_eq!(app.current_view().unwrap().diff.hunks.len(), 1);
     }
 
     #[test]
