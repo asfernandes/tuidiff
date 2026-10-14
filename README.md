@@ -69,6 +69,7 @@ Which files can be edited:
 | global | `Ctrl+S` / `F2` | save the current file pair / save all |
 | global | `Ctrl+Z` / `Ctrl+Y` | undo / redo |
 | global | `F1` | show all keys by section |
+| global | `F3` | link / unlink horizontal scrolling of the two panes (linked at every start) |
 | global | `F5` | rescan folders |
 | global | `F12` | toggle mouse capture (turn it off to use the terminal's own text selection) |
 | global | `Ctrl+Q` | quit; asks first if anything is unsaved |
@@ -83,7 +84,7 @@ Which files can be edited:
 | pane | `Ctrl+F` / `Ctrl+G` | find (plain text, case-insensitive; prefilled from the selection) / find next, wrapping at the end |
 | pane | `Esc` | back to the tree |
 
-Mouse: click a tree row to open a file or fold a folder. Click or drag in a pane to place the cursor or select, and double-click to select a word. The mouse wheel scrolls; hold `Shift` to scroll sideways. Click or drag the scrollbar of the tree or a pane to scroll it (both panes share one scroll position). Click `«` / `»` to copy a change, drag the tree border to resize it, drag the divider between the panes to resize them (double-click it to go back to 50:50), and use the status-bar buttons.
+Mouse: click a tree row to open a file or fold a folder. Click or drag in a pane to place the cursor or select, and double-click to select a word. The mouse wheel scrolls; hold `Shift` to scroll sideways (both panes together unless unlinked with `F3`). Click or drag the scrollbar of the tree or a pane to scroll it (both panes share one scroll position). Click `«` / `»` to copy a change, drag the tree border to resize it, drag the divider between the panes to resize them (double-click it to go back to 50:50), and use the status-bar buttons.
 
 ## Build
 
