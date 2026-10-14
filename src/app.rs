@@ -177,6 +177,8 @@ pub struct App {
     pub hl_pending: bool,
     pub mouse_enabled: bool,
     pub mouse_toggle_requested: bool,
+    /// Whether the two panes scroll horizontally together (not persisted; starts linked).
+    pub hscroll_linked: bool,
     drag: Option<Drag>,
     last_click: Option<(Instant, u16, u16)>,
 }
@@ -237,6 +239,7 @@ impl App {
             hl_pending: false,
             mouse_enabled: true,
             mouse_toggle_requested: false,
+            hscroll_linked: true,
             drag: None,
             last_click: None,
         };
@@ -471,6 +474,7 @@ impl App {
             KeyCode::Left if alt => return self.copy_current_hunk(1, 0),
             KeyCode::F(6) => return self.cycle_focus(!shift),
             KeyCode::BackTab => return self.cycle_focus(false),
+            KeyCode::F(3) => return self.toggle_hscroll_link(),
             KeyCode::F(12) => {
                 self.mouse_toggle_requested = true;
                 return;
@@ -813,6 +817,7 @@ impl App {
         let area = self.areas.panes[side];
         let h = area.height as usize;
         let w = area.width.saturating_sub(self.areas.gutter[side]) as usize;
+        let linked = self.hscroll_linked;
         let Some(fv) = self.current_view_mut() else { return };
         fv.refresh();
         if h == 0 {
@@ -831,6 +836,9 @@ impl App {
             *hs = dc.saturating_sub(4);
         } else if w > 0 && dc >= *hs + w {
             *hs = dc + 1 - w + 4.min(w / 4);
+        }
+        if linked {
+            fv.hscroll[1 - side] = fv.hscroll[side];
         }
     }
 
@@ -1114,13 +1122,30 @@ impl App {
     }
 
     fn hscroll(&mut self, p: Position, delta: isize) {
-        let sides: Vec<usize> = (0..2).filter(|&s| self.areas.panes[s].contains(p)).collect();
-        let sides = if sides.is_empty() { vec![0, 1] } else { sides };
-        if let Some(fv) = self.current_view_mut() {
-            for s in sides {
+        let hovered = (0..2).find(|&s| self.areas.panes[s].contains(p));
+        let linked = self.hscroll_linked;
+        let active = self.active_side();
+        let Some(fv) = self.current_view_mut() else { return };
+        if linked {
+            let v = fv.hscroll[hovered.unwrap_or(active)].saturating_add_signed(delta);
+            fv.hscroll = [v, v];
+        } else {
+            for s in hovered.map_or(vec![0, 1], |s| vec![s]) {
                 fv.hscroll[s] = fv.hscroll[s].saturating_add_signed(delta);
             }
         }
+    }
+
+    fn toggle_hscroll_link(&mut self) {
+        self.hscroll_linked = !self.hscroll_linked;
+        if self.hscroll_linked {
+            let side = self.active_side();
+            if let Some(fv) = self.current_view_mut() {
+                fv.hscroll[1 - side] = fv.hscroll[side];
+            }
+        }
+        let state = if self.hscroll_linked { "linked" } else { "independent" };
+        self.set_message(format!("Horizontal scroll: {state}"), false);
     }
 
     /// (total rows, offset) behind scrollbar `panel`.

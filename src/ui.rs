@@ -140,6 +140,7 @@ const HELP: &[HelpSection] = &[
             ("Ctrl+S / F2", "save the current file pair / save all"),
             ("Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z)", "undo / redo"),
             ("Ctrl+F / Ctrl+G", "find / find next"),
+            ("F3", "link / unlink horizontal scrolling of the two panes"),
             ("F5", "rescan folders (folder mode)"),
             ("F12", "toggle mouse capture (off = terminal text selection)"),
             ("F1", "show / hide this help"),
@@ -771,7 +772,8 @@ fn draw_status(buf: &mut TBuf, app: &mut App, area: Rect) -> Option<(u16, u16)> 
         }
     });
     let info = format!(
-        "{}{}",
+        "{}{}{}",
+        if app.hscroll_linked { "" } else { "[hscroll unlinked] " },
         if app.mouse_enabled { "" } else { "[mouse off] " },
         info.unwrap_or_default()
     );
@@ -889,7 +891,7 @@ mod tests {
         write(&l.path().join("a.txt"), "one\n");
         write(&r.path().join("a.txt"), "two\n");
         let mut app = App::new(l.path().join("a.txt"), r.path().join("a.txt"), opts()).unwrap();
-        let mut term = Terminal::new(TestBackend::new(110, 30)).unwrap();
+        let mut term = Terminal::new(TestBackend::new(110, 32)).unwrap();
         render(&mut term, &mut app);
         key(&mut app, KeyCode::F(1), KeyModifiers::NONE);
         let s = render(&mut term, &mut app);
@@ -924,6 +926,42 @@ mod tests {
         assert_eq!(app.current_view().unwrap().bufs[1].cursor.line, 2);
         key(&mut app, KeyCode::Char('g'), KeyModifiers::CONTROL);
         assert_eq!(app.current_view().unwrap().bufs[1].cursor.line, 1);
+    }
+
+    #[test]
+    fn hscroll_linked_and_unlinked() {
+        let l = tempfile::tempdir().unwrap();
+        let r = tempfile::tempdir().unwrap();
+        let long = |tag: &str| format!("{}{tag}END\n", "x".repeat(150));
+        write(&l.path().join("a.txt"), &long("L"));
+        write(&r.path().join("a.txt"), &long("R"));
+        let mut app = App::new(l.path().join("a.txt"), r.path().join("a.txt"), opts()).unwrap();
+        let mut term = Terminal::new(TestBackend::new(110, 12)).unwrap();
+        render(&mut term, &mut app);
+        let hs = |app: &App| app.current_view().unwrap().hscroll;
+
+        // Linked by default: moving the right cursor to the end scrolls both panes.
+        key(&mut app, KeyCode::End, KeyModifiers::NONE);
+        let s = render(&mut term, &mut app);
+        assert!(hs(&app)[1] > 0 && hs(&app)[0] == hs(&app)[1]);
+        assert!(s.contains("LEND") && s.contains("REND"));
+
+        // Sideways wheel over one pane scrolls both.
+        let p = app.areas.panes[0];
+        mouse(&mut app, MouseEventKind::ScrollLeft, p.x + 5, p.y);
+        assert!(hs(&app)[0] == hs(&app)[1]);
+
+        // Unlinked: only the pane with the cursor scrolls.
+        key(&mut app, KeyCode::F(3), KeyModifiers::NONE);
+        key(&mut app, KeyCode::Home, KeyModifiers::NONE);
+        let s = render(&mut term, &mut app);
+        assert!(s.contains("[hscroll unlinked]"));
+        assert!(hs(&app)[1] == 0 && hs(&app)[0] > 0);
+
+        // Relinking syncs the other pane to the active one.
+        key(&mut app, KeyCode::F(3), KeyModifiers::NONE);
+        assert_eq!(hs(&app), [0, 0]);
+        assert!(!render(&mut term, &mut app).contains("[hscroll unlinked]"));
     }
 
     #[test]
